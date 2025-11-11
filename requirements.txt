@@ -1,1 +1,2 @@
-pip install pypy
+# https://pypy.org/download.html
+pip install numpy scipy matplotlib pandas scikit-learn jupyter
