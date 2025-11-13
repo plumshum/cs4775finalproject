@@ -1,8 +1,7 @@
 Steps to get final phylogentic tree output
 
 1. Find fasta files of aligned genomes for your diesae (i.e: Covid)
-2. Create the MAPLE alignment files by running (TODO: check if correct)
-python3 createMapleFile.py (name of fasta file) (name of outputfile)
+2. Create MAPLE alignment file: python3 createMapleFile.py --path ./ --fasta aligned.fasta (make sure fasta file is in maple_alignment folder)
 3. Use these aligned MAPLE file to create newick trees by running MAPLEv0.7.5.py:
 
 `python3 MAPLEv0.7.5.py --input MAPLE_alignment_example.txt --output ./MAPLE_outputFilePrefix_tree.tree`
