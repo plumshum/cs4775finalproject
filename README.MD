@@ -9,3 +9,5 @@ Steps to get final phylogentic tree output
 
 4. Create a phylogenetic Tree. Using a simple matplotlib graph you 
 can run `plotNjTree.py`. Or you can use the online phylogenetic tree called [Taxonium](https://taxonium.org/) and choose the newick file. 
+
+COVID alignment files source : https://docs.nextstrain.org/projects/ncov/en/latest/reference/remote_inputs.html
