@@ -58,14 +58,55 @@ Outputs: see return docs in MAPLE source.
     pass
 
 
-def updateSubMatrix(pseudoMutCounts, model, oldMutMatrix):
-    """ Re/compute substitution matrix Q (and derived transition matrix) from pseudo-counts and model spec.
+# Constants needed for updeSubMatrix
+from math import log
+# rootFreqs=[0.25,0.25,0.25,0.25]
+# rootFreqsLog=[log(0.25),log(0.25),log(0.25),log(0.25)]
+THRESHOLD = 1e-6
+def updateSubMatrix(model, oldMutMatrix):
+    """ Re/compute substitution matrix Q (and derived transition matrix) from JC model
+    - First update with mutation matrix
+    - Normalize 
+    - Return updated mutation matrix
+    For now, model must be a JC (Jukes-Cantor)
+    Note: JC model assumes equal base frequencies and equal substitution rates, so we do not need `pseudoCounts`, which is used by the original MAPLE algorithm
 
-Inputs: ['pseudoMutCounts', 'model', 'oldMutMatrix']
-Outputs: see return docs in MAPLE source.
+Inputs: `['model'="JC", 'oldMutMatrix']`
+Outputs: bool: True if the mutation matrix `oldMutMatrix` was updated, False otherwise
+Exception: Exception if the given model is not JC
 """
-    pass
-
+    mutMatrix = [[0.0] * len(oldMutMatrix) for _ in range(len(oldMutMatrix))]
+    if model != "JC":
+        print("Error: Only JC model is implemented.")
+        raise Exception("exit")
+    # Implement JC model update
+    for i in range(len(oldMutMatrix)):
+        for j in range(len(oldMutMatrix)):
+            if i == j:
+                #TODO: use math.pow
+                mutMatrix[i][j] = 1 - 3 * 0.25 # fixed value for JC model
+            else:
+                mutMatrix[i][j] = 0.25
+    print(f"MutMatrix after JC: {mutMatrix}")
+    
+    # Normalize 
+    for i in range(len(mutMatrix)):
+        row_sum = sum(mutMatrix[i])
+        for j in range(len(mutMatrix)):
+            mutMatrix[i][j] /= row_sum
+    
+    print(f"Normalized mut matrix: {mutMatrix}")
+    
+    # Update oldMutMatrix by checking if there are significant changes
+    # We consider a significant change if the difference between mutMatrix and oldMutMatrix elements is greater than a threshold of THRESHOLD
+    for i in range(len(mutMatrix)):
+        for j in range(len(mutMatrix)):
+            if abs(mutMatrix[i][j] - oldMutMatrix[i][j]) > THRESHOLD:
+                oldMutMatrix[i][j] = mutMatrix[i][j]
+                print(f"Updated oldMutMatrix at [{i}][{j}] to {mutMatrix[i][j]}")
+                return True
+    
+    return False
 
 def probVectTerminalNode(diffs, tree, node):
     """ Create a terminal-node probability vector from sample/reference diffs at a node.
