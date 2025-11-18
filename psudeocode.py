@@ -46,7 +46,12 @@ def collectReference(fileName):
 Inputs: ['fileName']
 Outputs: see return docs in MAPLE source.
 """
-    pass
+    ref_seq = ""
+    with open(fileName) as file:
+        for line in file:
+            ref_seq += line.replace("\n", "")
+    
+    return ref_seq
 
 
 def readConciseAlignment(fileName, extractReference, ref, onlyRef):
@@ -55,7 +60,64 @@ def readConciseAlignment(fileName, extractReference, ref, onlyRef):
 Inputs: ['fileName', 'extractReference', 'ref', 'onlyRef']
 Outputs: see return docs in MAPLE source.
 """
-    pass
+    if fileName.endswith(".gz"):
+	    import gzip
+		fileI=gzip.open(fileName, 'rt')
+	else:
+		fileI=open(fileName)
+	line=fileI.readline()
+	if extractReference:
+		line=fileI.readline()
+		ref=""
+		while line!="" and line[0]!=">":
+			ref+=line.replace("\n","")
+			line=fileI.readline()
+		ref=ref.lower()
+	if onlyRef:
+		return ref
+	nSeqs=0
+	data={}
+	while line!="" and line!="\n":
+		seqList=[]
+		name=line.replace(">","").replace("\n","")
+		line=fileI.readline()
+		pos=0
+		while line!="" and line!="\n" and line[0]!=">":
+			linelist=line.split()
+			if len(linelist)>2:
+				entry=(linelist[0].lower(),int(linelist[1]),int(linelist[2]))
+			elif len(linelist)<2:
+				print("In input file "+fileName+" found line with only one column: \n"+line+"ERROR Please check for errors in the alignment format; if the reference is included at the top of the alignment, then please don't use option --reference.")
+				raise Exception("exit")
+			else:
+				entry=(linelist[0].lower(),int(linelist[1]))
+			if ref[entry[1]-1]==entry[0] and entry[0]!="n" and entry[0]!="-":
+				print("Mutation observed into reference nucleotide at position "+str(entry[1])+" , nucleotide "+entry[0]+". Wrong reference and/or diff file?")
+				raise Exception("exit")
+			if entry[1]<=pos:
+				print("WARNING, at sample number "+str(nSeqs+1)+" found entry")
+				print(line.replace("\n",""))
+				print("which is inconsistent since the position is already represented by another entry:")
+				print(seqList[-1])
+				raise Exception("exit")
+			else:
+				seqList.append(entry)
+				if len(entry)==2:
+					pos=entry[1]
+				else:
+					pos=entry[1]+entry[2]-1
+			line=fileI.readline()
+		data[name]=seqList
+		nSeqs+=1
+	fileI.close()
+	print(str(nSeqs)+" sequences in diff file.")
+	if extractReference:
+		return ref, data
+	else:
+		return data
+
+    
+
 
 
 def updateSubMatrix(pseudoMutCounts, model, oldMutMatrix):
@@ -136,7 +198,39 @@ def updateBLen(tree, cNode, addToList, nodeList):
 Inputs: ['tree', 'cNode', 'addToList', 'nodeList']
 Outputs: see return docs in MAPLE source.
 """
-    pass
+    # store local variables
+    parents = tree.up
+    dirty = tree.dirty
+    probDown = tree.probVect
+    probUpLeft = tree.probVectUpLeft
+    probUpRight = tree.probVectUpRight
+    children = tree.children
+    distances = tree.dist
+    parent = parents[cNode]
+
+
+    if cNode == children[parent][0] : #node is left child
+         cIdx = 0
+         vectDown = probUpRight[parent]
+    else : #node is right child
+         cIdx = 1
+         vectDown = probUpLeft[parent]
+
+    bestLength = estimateBranchLengthWithDerivative(vectDown,probDown[cNode],fromTipC=len(children[[cNode]] == 0))
+    distances[cNode] = bestLength
+
+    dirty[parent] = True
+    dirty[cNode] = True
+    if addToList: # need to schedule nodes for further 
+         nodeList.append((cNode, 2, True, False))
+         nodeList.append((parent, cIdx, True, False))
+
+
+
+
+
+
+    
 
 
 def areVectorsDifferent(probVect1, probVect2):
