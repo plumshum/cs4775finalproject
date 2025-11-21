@@ -71,10 +71,10 @@ def updateSubMatrix(model, oldMutMatrix):
     For now, model must be a JC (Jukes-Cantor)
     Note: JC model assumes equal base frequencies and equal substitution rates, so we do not need `pseudoCounts`, which is used by the original MAPLE algorithm
 
-Inputs: `['model'="JC", 'oldMutMatrix']`
-Outputs: bool: True if the mutation matrix `oldMutMatrix` was updated, False otherwise
-Exception: Exception if the given model is not JC
-"""
+    Inputs: `['model'="JC", 'oldMutMatrix']`
+    Outputs: bool: True if the mutation matrix `oldMutMatrix` was updated, False otherwise
+    Exception: Exception if the given model is not JC
+    """
     mutMatrix = [[0.0] * len(oldMutMatrix) for _ in range(len(oldMutMatrix))]
     if model != "JC":
         print("Error: Only JC model is implemented.")
@@ -98,7 +98,7 @@ Exception: Exception if the given model is not JC
     print(f"Normalized mut matrix: {mutMatrix}")
     
     # Update oldMutMatrix by checking if there are significant changes
-    # We consider a significant change if the difference between mutMatrix and oldMutMatrix elements is greater than a threshold of THRESHOLD
+    # We consider a significant change if the difference between mutMatrix and oldMutMatrix elements is greater than `THRESHOLD`
     for i in range(len(mutMatrix)):
         for j in range(len(mutMatrix)):
             if abs(mutMatrix[i][j] - oldMutMatrix[i][j]) > THRESHOLD:
