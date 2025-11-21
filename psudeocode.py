@@ -39,6 +39,48 @@
 #  - UNREST: full 12‑rate model with independent r_{ij}; rows sum to 0, normalize.
 #
 # NOTE: This is a documentation scaffold. All functions 'pass'.
+import numpy as np
+
+class Tree(object):
+	def __init__(self):
+		self.dist = []
+		self.replacements=[]
+		self.children = []
+		self.mutations=[]
+		self.up=[]
+		self.dirty=[]
+		self.name=[]
+		self.minorSequences=[]
+		self.probVect=[]
+		self.probVectUpRight=[]
+		self.probVectUpLeft=[]
+		self.probVectTotUp=[]
+		self.nDesc=[]
+		#number of branches descending from node after collapsing 0-length branches
+		self.nDesc0=[]
+		self.probVectTime=[]
+		self.probVectUpRightTime=[]
+		self.probVectUpLeftTime=[]
+		self.probVectTotUpTime=[]
+		self.dateData=[]
+	def __repr__(self):
+		return "Tree object"
+	def addNode(self,dirtiness=True):
+		self.up.append(None)
+		self.children.append([])
+		self.dirty.append(dirtiness)
+		self.name.append("")
+		self.minorSequences.append([])
+		self.mutations.append([])
+		self.replacements.append(0)
+		self.dist.append(0.0)
+		self.probVect.append(None)
+		self.probVectUpRight.append(None)
+		self.probVectUpLeft.append(None)
+		self.probVectTotUp.append(None)
+		self.nDesc.append(0)
+		# if HnZ:
+		# 	self.nDesc0.append(1)
 
 def collectReference(fileName):
     """ Read a FASTA-like reference from file and return reference sequence.
@@ -50,7 +92,7 @@ Outputs: see return docs in MAPLE source.
     with open(fileName) as file:
         for line in file:
             ref_seq += line.replace("\n", "")
-    
+    file.close()
     return ref_seq
 
 
@@ -115,7 +157,7 @@ Outputs: see return docs in MAPLE source.
 	# 	return ref, data
 	# else:
 	# 	return data
-    # todo: Rithya note: my ide said the spacing was off so i pasted in the same thing , it that ok?
+    # TODO: Rithya note: my ide said the spacing was off so i pasted in the same thing , it that ok?
     if fileName.endswith(".gz"):
         import gzip
         fileI = gzip.open(fileName, 'rt')
@@ -192,38 +234,44 @@ def updateSubMatrix(model, oldMutMatrix):
     Outputs: bool: True if the mutation matrix `oldMutMatrix` was updated, False otherwise
     Exception: Exception if the given model is not JC
     """
-    mutMatrix = [[0.0] * len(oldMutMatrix) for _ in range(len(oldMutMatrix))]
+    n = len(oldMutMatrix)
+    mutMatrix = np.full((n, n), 0.25)  # Fill with 0.25 (off-diagonal rate)
+    np.fill_diagonal(mutMatrix, 0.25)  # Diagonal: 1 - 3*0.25 = 0.25 for JC
     if model != "JC":
         print("Error: Only JC model is implemented.")
         raise Exception("exit")
     # Implement JC model update
-    for i in range(len(oldMutMatrix)):
-        for j in range(len(oldMutMatrix)):
-            if i == j:
-                #TODO: use math.pow
-                mutMatrix[i][j] = 1 - 3 * 0.25 # fixed value for JC model
-            else:
-                mutMatrix[i][j] = 0.25
+    # for i in range(len(oldMutMatrix)):
+    #     for j in range(len(oldMutMatrix)):
+    #         if i == j:
+    #             #TODO: use math.pow
+    #             mutMatrix[i][j] = 1 - 3 * 0.25 # fixed value for JC model
+    #         else:
+    #             mutMatrix[i][j] = 0.25
     print(f"MutMatrix after JC: {mutMatrix}")
     
-    # Normalize 
-    for i in range(len(mutMatrix)):
-        row_sum = sum(mutMatrix[i])
-        for j in range(len(mutMatrix)):
-            mutMatrix[i][j] /= row_sum
+    # Normalize using np array
+    row_sums = mutMatrix.sum(axis=1, keepdims=True)
+    mutMatrix = mutMatrix / row_sums
     
     print(f"Normalized mut matrix: {mutMatrix}")
     
     # Update oldMutMatrix by checking if there are significant changes
     # We consider a significant change if the difference between mutMatrix and oldMutMatrix elements is greater than `THRESHOLD`
-    for i in range(len(mutMatrix)):
-        for j in range(len(mutMatrix)):
-            if abs(mutMatrix[i][j] - oldMutMatrix[i][j]) > THRESHOLD:
+    # Convert oldMutMatrix to numpy array for comparison
+    oldMutMatrix_np = np.array(oldMutMatrix)
+    
+    # Check if there are significant changes
+    if np.any(np.abs(mutMatrix - oldMutMatrix_np) > THRESHOLD):
+        # Update oldMutMatrix in-place
+        for i in range(n):
+            for j in range(n):
                 oldMutMatrix[i][j] = mutMatrix[i][j]
-                print(f"Updated oldMutMatrix at [{i}][{j}] to {mutMatrix[i][j]}")
-                return True
+        print(f"Updated oldMutMatrix")
+        return True
     
     return False
+
 def convertLetterToNumber(letter):
     """ Convert a letter to a number. also checks validty"""
     if letter == "A":
@@ -238,10 +286,11 @@ def convertLetterToNumber(letter):
         print("Error: Invalid letter")
         return None
 
-def probVectTerminalNode(diffs, tree, node):
+def probVectTerminalNode(diffs, tree, node, ref_seq):
     """ Create a terminal-node probability vector from sample/reference diffs at a node.
 
-Inputs: ['diffs', 'tree', 'node']
+Inputs: ['diffs', 'tree', 'node', ref_seq]
+refseq: a list of numbers representing a sequence
 Outputs: see return docs in MAPLE source.
 output: prob vector is a list of tuples (code,start index, stop index)
 code 1 : Exact Match
@@ -251,7 +300,7 @@ code 2: Mismatch
     # todo: ask is everything zero indexed? Note, tree uses mutation
     # set up varibles + base case
     probVect = [] # retunrs a list of trriples(code,start index, stop index(
-
+    ref_numbers = [convertLetterToNumber(i) for i in ref_seq] # convert ref to numeric
     index = 0
     if (diffs == None or tree == None):
         print("Invalid call to probVectTerminalNode, empty arguments" )
@@ -262,22 +311,15 @@ code 2: Mismatch
             index = position# after we append, we shift our index
         else:
             letter_num = convertLetterToNumber(letter)
-            sequence_num= ref[position]
-            if (letter_num == sequence_num):
+            sequence_num= ref_numbers[position]
+            if (letter_num== sequence_num):
                 probVect.append((1,index,position))
                 index = position + 1
             else:
                 probVect.append((2,position,position))
     return probVect
 
-
-def updateProbVectTerminalNode(probVect, numMinSeqs):
-    """ Post-process/normalize terminal-node vector given min sequence counts.
-
-Inputs: ['probVect', 'numMinSeqs']
-Outputs: see return docs in MAPLE source.
-"""
-    pass
+# Note: updateProbVectTerminalNode moved to archived functions
 
 
 def getPartialVec(i12, totLen, mutMatrix, errorRate, vect, upNode, flag):
@@ -293,20 +335,30 @@ def mergeVectors(probVect1, bLen1, fromTip1, probVect2, bLen2, fromTip2, returnL
     """ Combine two partial-likelihood vectors meeting at a node/edge; optionally return LK.
 
 Inputs: ['probVect1', 'bLen1', 'fromTip1', 'probVect2', 'bLen2', 'fromTip2', 'returnLK', 'isUpDown']
+probVect1:
+bLen1: branch length for the first probabilty vector 
+fromTIp1:
+probVect2:
+bLen2: branch length for the second probabilty vector
+fromTip2:
+returnLK:
+isUpDown: 
+TODO: finish another day
 Outputs: see return docs in MAPLE source.
 """
     pass
 
 
-def findProbRoot(tree, node):
-    """ Search for root that maximizes overall likelihood given current vectors/BLens.
+# def findProbRoot(tree, node):
+#     """ Search for root that maximizes overall likelihood given current vectors/BLens.
 
-Inputs: ['tree', 'node']
-Outputs: see return docs in MAPLE source.
-"""
-    pass
+# Inputs: ['tree', 'node']
+# Outputs: see return docs in MAPLE source.
+# """
+#     pass
 
 
+# TODO: 
 def rootVector(tree, node):
     """ Compute likelihood vector at (candidate) root by merging child partials.
 
@@ -334,9 +386,9 @@ Outputs: see return docs in MAPLE source.
     # store local variables
     parents = tree.up
     dirty = tree.dirty
-    probDown = tree.probVect
-    probUpLeft = tree.probVectUpLeft
-    probUpRight = tree.probVectUpRight
+    probDown = tree.probVect #up vectors (leaf to root)
+    probUpLeft = tree.probVectUpLeft #down vectors (root to leaf)
+    probUpRight = tree.probVectUpRight #down vectors (root to leaf)
     children = tree.children
     distances = tree.dist
     parent = parents[cNode]
@@ -357,13 +409,6 @@ Outputs: see return docs in MAPLE source.
     if addToList: # need to schedule nodes for further 
          nodeList.append((cNode, 2, True, False))
          nodeList.append((parent, cIdx, True, False))
-
-
-
-
-
-
-    
 
 
 def areVectorsDifferent(probVect1, probVect2):
@@ -399,8 +444,8 @@ def createNewick(tree, node,
         return default
 
     # convert branch length to string with desired formatting
-    def _bl_str(n):
-        bl = _get(n, "branch_length", _get(n, "bl", None))
+    def _bl_str(nextNode):
+        bl = tree.dist[nextNode]
         if bl is None:
             return ""
         try:
@@ -703,7 +748,14 @@ Outputs: see return docs in MAPLE source.
 """
     pass
 
+def updateProbVectTerminalNode(probVect, numMinSeqs):
+    """ Post-process/normalize terminal-node vector given min sequence counts.
 
+Inputs: ['probVect', 'numMinSeqs']
+Outputs: see return docs in MAPLE source.
+"""
+    pass
+    
 def RobinsonFouldsWithDay1985(prepA, prepB):
     """ Compute RF distance per Day 1985 algorithm.
 
@@ -717,4 +769,4 @@ if __name__ == "__main__":
              ('c', 23604), ('a', 28271), ('g', 29742)] # from the sample from maple test
     node = 0
     tree = None
-    probVectTerminalNode(diffs,None,node)
+   
