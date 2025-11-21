@@ -60,64 +60,119 @@ def readConciseAlignment(fileName, extractReference, ref, onlyRef):
 Inputs: ['fileName', 'extractReference', 'ref', 'onlyRef']
 Outputs: see return docs in MAPLE source.
 """
+    # if fileName.endswith(".gz"):
+	#     import gzip
+    #     fileI=gzip.open(fileName, 'rt')
+	# else:
+	#     fileI=open(fileName)
+	# line=fileI.readline()
+    # if extractReference:
+	#     line=fileI.readline()
+	#     ref=""
+    #     while line!="" and line[0]!=">":
+	# 		ref+=line.replace("\n","")
+	# 		line=fileI.readline()
+	# 	ref=ref.lower()
+	# if onlyRef:
+	# 	return ref
+	# nSeqs=0
+	# data={}
+	# while line!="" and line!="\n":
+	# 	seqList=[]
+	# 	name=line.replace(">","").replace("\n","")
+	# 	line=fileI.readline()
+	# 	pos=0
+	# 	while line!="" and line!="\n" and line[0]!=">":
+	# 		linelist=line.split()
+	# 		if len(linelist)>2:
+	# 			entry=(linelist[0].lower(),int(linelist[1]),int(linelist[2]))
+	# 		elif len(linelist)<2:
+	# 			print("In input file "+fileName+" found line with only one column: \n"+line+"ERROR Please check for errors in the alignment format; if the reference is included at the top of the alignment, then please don't use option --reference.")
+	# 			raise Exception("exit")
+	# 		else:
+	# 			entry=(linelist[0].lower(),int(linelist[1]))
+	# 		if ref[entry[1]-1]==entry[0] and entry[0]!="n" and entry[0]!="-":
+	# 			print("Mutation observed into reference nucleotide at position "+str(entry[1])+" , nucleotide "+entry[0]+". Wrong reference and/or diff file?")
+	# 			raise Exception("exit")
+	# 		if entry[1]<=pos:
+	# 			print("WARNING, at sample number "+str(nSeqs+1)+" found entry")
+	# 			print(line.replace("\n",""))
+	# 			print("which is inconsistent since the position is already represented by another entry:")
+	# 			print(seqList[-1])
+	# 			raise Exception("exit")
+	# 		else:
+	# 			seqList.append(entry)
+	# 			if len(entry)==2:
+	# 				pos=entry[1]
+	# 			else:
+	# 				pos=entry[1]+entry[2]-1
+	# 		line=fileI.readline()
+	# 	data[name]=seqList
+	# 	nSeqs+=1
+	# fileI.close()
+	# print(str(nSeqs)+" sequences in diff file.")
+	# if extractReference:
+	# 	return ref, data
+	# else:
+	# 	return data
+    # todo: Rithya note: my ide said the spacing was off so i pasted in the same thing , it that ok?
     if fileName.endswith(".gz"):
-	    import gzip
-		fileI=gzip.open(fileName, 'rt')
-	else:
-		fileI=open(fileName)
-	line=fileI.readline()
-	if extractReference:
-		line=fileI.readline()
-		ref=""
-		while line!="" and line[0]!=">":
-			ref+=line.replace("\n","")
-			line=fileI.readline()
-		ref=ref.lower()
-	if onlyRef:
-		return ref
-	nSeqs=0
-	data={}
-	while line!="" and line!="\n":
-		seqList=[]
-		name=line.replace(">","").replace("\n","")
-		line=fileI.readline()
-		pos=0
-		while line!="" and line!="\n" and line[0]!=">":
-			linelist=line.split()
-			if len(linelist)>2:
-				entry=(linelist[0].lower(),int(linelist[1]),int(linelist[2]))
-			elif len(linelist)<2:
-				print("In input file "+fileName+" found line with only one column: \n"+line+"ERROR Please check for errors in the alignment format; if the reference is included at the top of the alignment, then please don't use option --reference.")
-				raise Exception("exit")
-			else:
-				entry=(linelist[0].lower(),int(linelist[1]))
-			if ref[entry[1]-1]==entry[0] and entry[0]!="n" and entry[0]!="-":
-				print("Mutation observed into reference nucleotide at position "+str(entry[1])+" , nucleotide "+entry[0]+". Wrong reference and/or diff file?")
-				raise Exception("exit")
-			if entry[1]<=pos:
-				print("WARNING, at sample number "+str(nSeqs+1)+" found entry")
-				print(line.replace("\n",""))
-				print("which is inconsistent since the position is already represented by another entry:")
-				print(seqList[-1])
-				raise Exception("exit")
-			else:
-				seqList.append(entry)
-				if len(entry)==2:
-					pos=entry[1]
-				else:
-					pos=entry[1]+entry[2]-1
-			line=fileI.readline()
-		data[name]=seqList
-		nSeqs+=1
-	fileI.close()
-	print(str(nSeqs)+" sequences in diff file.")
-	if extractReference:
-		return ref, data
-	else:
-		return data
-
-    
-
+        import gzip
+        fileI = gzip.open(fileName, 'rt')
+    else:
+        fileI = open(fileName)
+    line = fileI.readline()
+    if extractReference:
+        line = fileI.readline()
+        ref = ""
+        while line != "" and line[0] != ">":
+            ref += line.replace("\n", "")
+            line = fileI.readline()
+        ref = ref.lower()
+    if onlyRef:
+        return ref
+    nSeqs = 0
+    data = {}
+    while line != "" and line != "\n":
+        seqList = []
+        name = line.replace(">", "").replace("\n", "")
+        line = fileI.readline()
+        pos = 0
+        while line != "" and line != "\n" and line[0] != ">":
+            linelist = line.split()
+            if len(linelist) > 2:
+                entry = (linelist[0].lower(), int(linelist[1]), int(linelist[2]))
+            elif len(linelist) < 2:
+                print(
+                    "In input file " + fileName + " found line with only one column: \n" + line + "ERROR Please check for errors in the alignment format; if the reference is included at the top of the alignment, then please don't use option --reference.")
+                raise Exception("exit")
+            else:
+                entry = (linelist[0].lower(), int(linelist[1]))
+            if ref[entry[1] - 1] == entry[0] and entry[0] != "n" and entry[0] != "-":
+                print("Mutation observed into reference nucleotide at position " + str(entry[1]) + " , nucleotide " +
+                      entry[0] + ". Wrong reference and/or diff file?")
+                raise Exception("exit")
+            if entry[1] <= pos:
+                print("WARNING, at sample number " + str(nSeqs + 1) + " found entry")
+                print(line.replace("\n", ""))
+                print("which is inconsistent since the position is already represented by another entry:")
+                print(seqList[-1])
+                raise Exception("exit")
+            else:
+                seqList.append(entry)
+                if len(entry) == 2:
+                    pos = entry[1]
+                else:
+                    pos = entry[1] + entry[2] - 1
+            line = fileI.readline()
+        data[name] = seqList
+        nSeqs += 1
+    fileI.close()
+    print(str(nSeqs) + " sequences in diff file.")
+    if extractReference:
+        return ref, data
+    else:
+        return data
 
 
 # Constants needed for updeSubMatrix
@@ -169,14 +224,51 @@ Exception: Exception if the given model is not JC
                 return True
     
     return False
+def convertLetterToNumber(letter):
+    """ Convert a letter to a number. also checks validty"""
+    if letter == "A":
+        return 0
+    elif letter == "C":
+        return 1
+    elif letter == "G":
+        return 2
+    elif letter == "T":
+        return 3
+    else:
+        print("Error: Invalid letter")
+        return None
 
 def probVectTerminalNode(diffs, tree, node):
     """ Create a terminal-node probability vector from sample/reference diffs at a node.
 
 Inputs: ['diffs', 'tree', 'node']
 Outputs: see return docs in MAPLE source.
+output: prob vector is a list of tuples (code,start index, stop index)
+code 1 : Exact Match
+code 2: Mismatch
 """
-    pass
+    # todo: check about vairble ref  -> if numeric vesion of code
+    # todo: ask is everything zero indexed? Note, tree uses mutation
+    # set up varibles + base case
+    probVect = [] # retunrs a list of trriples(code,start index, stop index(
+
+    index = 0
+    if (diffs == None or tree == None):
+        print("Invalid call to probVectTerminalNode, empty arguments" )
+        return None
+    for (letter,position) in diffs:
+        if (position > index):
+            probVect.append((1,index,position))
+            index = position# after we append, we shift our index
+        else:
+            letter_num = convertLetterToNumber(letter)
+            sequence_num= ref[position]
+            if (letter_num == sequence_num):
+                probVect.append((1,index,position))
+                index = position + 1
+            else:
+                probVect.append((2,position,position))
+    return probVect
 
 
 def updateProbVectTerminalNode(probVect, numMinSeqs):
@@ -481,3 +573,9 @@ Outputs: see return docs in MAPLE source.
 """
     pass
 
+if __name__ == "__main__":
+    diffs = [('t', 313), ('g', 1832), ('c', 10029), ('c', 21618), ('t', 22917), ('c', 22995), ('a', 23063),
+             ('c', 23604), ('a', 28271), ('g', 29742)] # from the sample from maple test
+    node = 0
+    tree = None
+    probVectTerminalNode(diffs,None,node)
