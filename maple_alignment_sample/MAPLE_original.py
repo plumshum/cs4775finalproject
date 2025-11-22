@@ -22,7 +22,7 @@ from operator import itemgetter
 
 parser = argparse.ArgumentParser(description='Estimate a tree from a diff format and using iterative approximate maximum likelihood sample placement.')
 #important options
-parser.add_argument('--input',default="MAPLE_input.txt", help='Input MAPLE file name; should contain first the reference genome and then the difference of all samples with respect to the reference.')
+parser.add_argument('--input',default="MAPLE_europe.txt", help='Input MAPLE file name; should contain first the reference genome and then the difference of all samples with respect to the reference.')
 parser.add_argument('--reference',default="", help='Optional input reference file name. By default it assumes instead that the reference is part of the MAPLE format input.')
 parser.add_argument("--model", help="Which substitution model should be used. Allowed models so far are JC, GTR (default) or UNREST.", default="GTR")
 parser.add_argument('--output',default="MAPLE_output", help='Output path and identifier to be used for newick output file.')
@@ -8664,7 +8664,7 @@ if __name__ == "__main__":
 				bestBL2=max(dist[child1]+dist[child2]-bestBL1,0.0)
 				try:
 					if HnZ:
-						updateNDesc0whenChangingDist(tree,child1,bestBL1)
+						(tree,child1,bestBL1)
 					dist[child1]=bestBL1
 					if not fastPass:
 						nodeList=[(child1,2,True,doTimeTree),(root,0,True,doTimeTree)]
