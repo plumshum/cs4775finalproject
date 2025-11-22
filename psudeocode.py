@@ -82,6 +82,8 @@ class Tree(object):
 		# if HnZ:
 		# 	self.nDesc0.append(1)
 
+thresholdFoldChangeUpdate = 1.01
+thresholdDiffForUpdate = 0.00001
 def collectReference(fileName):
     """ Read a FASTA-like reference from file and return reference sequence.
 
@@ -93,6 +95,8 @@ Outputs: see return docs in MAPLE source.
         for line in file:
             ref_seq += line.replace("\n", "")
     file.close()
+    global lref 
+    lref = len(ref_seq)
     return ref_seq
 
 
@@ -102,62 +106,6 @@ def readConciseAlignment(fileName, extractReference, ref, onlyRef):
 Inputs: ['fileName', 'extractReference', 'ref', 'onlyRef']
 Outputs: see return docs in MAPLE source.
 """
-    # if fileName.endswith(".gz"):
-	#     import gzip
-    #     fileI=gzip.open(fileName, 'rt')
-	# else:
-	#     fileI=open(fileName)
-	# line=fileI.readline()
-    # if extractReference:
-	#     line=fileI.readline()
-	#     ref=""
-    #     while line!="" and line[0]!=">":
-	# 		ref+=line.replace("\n","")
-	# 		line=fileI.readline()
-	# 	ref=ref.lower()
-	# if onlyRef:
-	# 	return ref
-	# nSeqs=0
-	# data={}
-	# while line!="" and line!="\n":
-	# 	seqList=[]
-	# 	name=line.replace(">","").replace("\n","")
-	# 	line=fileI.readline()
-	# 	pos=0
-	# 	while line!="" and line!="\n" and line[0]!=">":
-	# 		linelist=line.split()
-	# 		if len(linelist)>2:
-	# 			entry=(linelist[0].lower(),int(linelist[1]),int(linelist[2]))
-	# 		elif len(linelist)<2:
-	# 			print("In input file "+fileName+" found line with only one column: \n"+line+"ERROR Please check for errors in the alignment format; if the reference is included at the top of the alignment, then please don't use option --reference.")
-	# 			raise Exception("exit")
-	# 		else:
-	# 			entry=(linelist[0].lower(),int(linelist[1]))
-	# 		if ref[entry[1]-1]==entry[0] and entry[0]!="n" and entry[0]!="-":
-	# 			print("Mutation observed into reference nucleotide at position "+str(entry[1])+" , nucleotide "+entry[0]+". Wrong reference and/or diff file?")
-	# 			raise Exception("exit")
-	# 		if entry[1]<=pos:
-	# 			print("WARNING, at sample number "+str(nSeqs+1)+" found entry")
-	# 			print(line.replace("\n",""))
-	# 			print("which is inconsistent since the position is already represented by another entry:")
-	# 			print(seqList[-1])
-	# 			raise Exception("exit")
-	# 		else:
-	# 			seqList.append(entry)
-	# 			if len(entry)==2:
-	# 				pos=entry[1]
-	# 			else:
-	# 				pos=entry[1]+entry[2]-1
-	# 		line=fileI.readline()
-	# 	data[name]=seqList
-	# 	nSeqs+=1
-	# fileI.close()
-	# print(str(nSeqs)+" sequences in diff file.")
-	# if extractReference:
-	# 	return ref, data
-	# else:
-	# 	return data
-    # TODO: Rithya note: my ide said the spacing was off so i pasted in the same thing , it that ok?
     if fileName.endswith(".gz"):
         import gzip
         fileI = gzip.open(fileName, 'rt')
@@ -411,14 +359,68 @@ Outputs: see return docs in MAPLE source.
          nodeList.append((parent, cIdx, True, False))
 
 
+def compare_entry_type(e1,e2) :
+    return e1[0] == e2[0]
+
+def compare_entry_lengths(e1, e2):
+    return len(e1) == len(e2)
+
+def compare_simple_entry(entry1 ,entry2) :
+    for i in range(2, len(entry1)) :
+        if (abs(entry1[i] - entry2[i]) > THRESHOLD) :
+            return True
+    return False
+
+def compare_six_entry(entry1, entry2) :
+    if abs(entry1[2] - entry2[2]) > THRESHOLD :
+        return True
+    for i in range(4) :
+        diffVal = abs(entry1[-1][i] - entry2[-1][i])
+        if (diffVal > thresholdDiffForUpdate) :
+            return True
+        if (diffVal>THRESHOLD and ((diffVal/entry1[-1][i]>thresholdFoldChangeUpdate)  or  (diffVal/entry2[-1][i]>thresholdFoldChangeUpdate))):
+            return True
+    return False
+        
+
 def areVectorsDifferent(probVect1, probVect2):
     """ Return True if two probability vectors differ beyond thresholds.
 
 Inputs: ['probVect1', 'probVect2']
 Outputs: see return docs in MAPLE source.
 """
-    pass
+    if probVect1 == None or probVect2 == None :
+        return False
+    pos = 0
+    for i in range (len(probVect1)) :
+        entry1 = probVect1[i]
+        entry2 = probVect2[i]
+        if (not compare_entry_type(entry1, entry2)) :
+            return True
+        if (not compare_entry_lengths(entry1, entry2)) :
+            return True
+        if entry1[0] < 5: #types 0 - 4
+            if (compare_simple_entry(entry1, entry2)):
+                return True
+            if entry1[0] <= 3: #types 0 to 3
+                pos += 1
+            else : #type 4
+                pos = min(entry1[1], entry2[1])
 
+        elif entry1[0] == 5: #type 5
+             pos = min(entry1[1], entry2[1])
+
+        elif entry1[0] == 6: # type 6
+            if (compare_six_entry(entry1, entry2)) :
+                return True
+            pos += 1
+
+        if pos == lref: # lref is length of reference sequence
+            break
+    return False
+
+
+      
 
 def createNewick(tree, node,
                  namesInTree=None,
