@@ -367,13 +367,13 @@ def compare_entry_type(e1,e2) :
 def compare_entry_lengths(e1, e2):
     return len(e1) == len(e2)
 
-def compare_simple_entry(entry1 ,entry2) :
+def compare_ACGTR_entry(entry1 ,entry2) :
     for i in range(2, len(entry1)) :
         if (abs(entry1[i] - entry2[i]) > THRESHOLD) :
             return True
     return False
 
-def compare_six_entry(entry1, entry2) :
+def compare_O_entry(entry1, entry2) :
     if abs(entry1[2] - entry2[2]) > THRESHOLD :
         return True
     for i in range(4) :
@@ -383,6 +383,14 @@ def compare_six_entry(entry1, entry2) :
         if (diffVal>THRESHOLD and ((diffVal/entry1[-1][i]>thresholdFoldChangeUpdate)  or  (diffVal/entry2[-1][i]>thresholdFoldChangeUpdate))):
             return True
     return False
+
+def update_singular_pos(pos) :
+    return pos + 1
+
+def update_contiguous_pos(entry1, entry2) :
+    return min(entry1[1], entry2[1])
+
+
         
 
 def areVectorsDifferent(probVect1, probVect2):
@@ -401,21 +409,21 @@ Outputs: see return docs in MAPLE source.
             return True
         if (not compare_entry_lengths(entry1, entry2)) :
             return True
-        if entry1[0] < 5: #types 0 - 4
-            if (compare_simple_entry(entry1, entry2)):
+        if entry1[0] < 5: #types ACGTR
+            if (compare_ACGTR_entry(entry1, entry2)):
                 return True
-            if entry1[0] <= 3: #types 0 to 3
-                pos += 1
-            else : #type 4
-                pos = min(entry1[1], entry2[1])
+            if entry1[0] <= 3: #ACGT
+                pos = update_singular_pos(pos)
+            else : #type R
+                pos = update_contiguous_pos(entry1, entry2)
 
-        elif entry1[0] == 5: #type 5
-             pos = min(entry1[1], entry2[1])
+        elif entry1[0] == 5: #type N
+             pos = update_contiguous_pos(entry1, entry2)
 
         elif entry1[0] == 6: # type 6
-            if (compare_six_entry(entry1, entry2)) :
+            if (compare_O_entry(entry1, entry2)) :
                 return True
-            pos += 1
+            pos = update_contiguous_pos(entry1, entry2)
 
         if pos == lref: # lref is length of reference sequence
             break
