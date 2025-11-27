@@ -334,9 +334,9 @@ Outputs: see return docs in MAPLE source.
     # store local variables
     parents = tree.up
     dirty = tree.dirty
-    probDown = tree.probVect #up vectors (leaf to root)
-    probUpLeft = tree.probVectUpLeft #down vectors (root to leaf)
-    probUpRight = tree.probVectUpRight #down vectors (root to leaf)
+    probDown = tree.probVect 
+    probUpLeft = tree.probVectUpLeft 
+    probUpRight = tree.probVectUpRight 
     children = tree.children
     distances = tree.dist
     parent = parents[cNode]
@@ -344,12 +344,14 @@ Outputs: see return docs in MAPLE source.
 
     if cNode == children[parent][0] : #node is left child
          cIdx = 0
-         vectDown = probUpRight[parent]
+         vectUp = probUpRight[parent]
     else : #node is right child
          cIdx = 1
-         vectDown = probUpLeft[parent]
+         vectUp = probUpLeft[parent]
+    
+    vectDown = probDown[cNode]
 
-    bestLength = estimateBranchLengthWithDerivative(vectDown,probDown[cNode],fromTipC=len(children[[cNode]] == 0))
+    bestLength = estimateBranchLengthWithDerivative(vectUp,vectDown,fromTipC=len(children[[cNode]] == 0))
     distances[cNode] = bestLength
 
     dirty[parent] = True
