@@ -368,15 +368,14 @@ def compare_entry_lengths(e1, e2):
     return len(e1) == len(e2)
 
 def compare_ACGTR_entry(entry1 ,entry2) :
-    for i in range(2, len(entry1)) :
-        if (abs(entry1[i] - entry2[i]) > THRESHOLD) :
-            return True
+    if (abs(entry1[2] - entry2[2]) > THRESHOLD) : #compare branch lengths
+        return True
     return False
 
 def compare_O_entry(entry1, entry2) :
-    if abs(entry1[2] - entry2[2]) > THRESHOLD :
+    if abs(entry1[2] - entry2[2]) > THRESHOLD : #compare branch lengths
         return True
-    for i in range(4) :
+    for i in range(4) : #compare probabilities of each nucleotide
         diffVal = abs(entry1[-1][i] - entry2[-1][i])
         if (diffVal > thresholdDiffForUpdate) :
             return True
