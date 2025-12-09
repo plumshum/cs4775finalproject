@@ -169,7 +169,7 @@ Outputs: see return docs in MAPLE source.
 from math import log
 # rootFreqs=[0.25,0.25,0.25,0.25]
 # rootFreqsLog=[log(0.25),log(0.25),log(0.25),log(0.25)]
-THRESHOLD = 1e-6
+THRESHOLD = 1e-6 
 def updateSubMatrix(model, oldMutMatrix):
     """ Re/compute substitution matrix Q (and derived transition matrix) from JC model
     - First update with mutation matrix
@@ -270,17 +270,47 @@ code 2: Mismatch
 # Note: updateProbVectTerminalNode moved to archived functions
 
 
-def getPartialVec(i12, totLen, mutMatrix, errorRate, vect, upNode, flag):
-    """ Propagate a probability vector across a branch using the substitution model.
+def propagatePartialVecHelper(mutMatrix, vect, totLen):
+    vect = np.array(vect, dtype = float)
+    changeVec = np.dot(mutMatrix, vect)
+    changeVecScaled = totLen * changeVec
+    ansVec = vect + changeVecScaled
+    if (ansVec < 0).any():
+        return [0.25,0.25,0.25,0.25]
+    else:
+        return ansVec.tolist()
 
-Inputs: ['i12', 'totLen', 'mutMatrix', 'errorRate', 'vect', 'upNode', 'flag']
-Outputs: see return docs in MAPLE source.
-"""
-    pass
+usingErrorRate = False
+def getPartialVec(i12, totLen, mutMatrix, errorRate, vect=None, upNode=False, flag=False):
+    if i12==6:
+        if (not totLen) and (vect):
+            return list(vect)
+        mutMatrixToUse = mutMatrix.T if upNode else mutMatrix
+        newVect = propagatePartialVecHelper(mutMatrixToUse, vect, totLen)
+        return newVect
+    elif usingErrorRate and flag:
+        newVect = [errorRate*0.33333] * 4
+        newVect[i12] = 1.0 - errorRate
+        if (not totLen):
+            return newVect
+        mutatedPartialVec = propagatePartialVecHelper(mutMatrix.T, newVect, totLen)
+        return mutatedPartialVec
+    else:
+        if (not totLen):
+            defVect=[0.0,0.0,0.0,0.0]
+            defVect[i12]+=1.0
+            return defVect
+        newVect = mutMatrix[i12, :] * totLen if upNode else mutMatrix[:, i12] * totLen
+        newVect[i12]+=1.0
+        if newVect[i12] < 0:
+            return [0.25,0.25,0.25,0.25]
+        return newVect.tolist()
 
 
 def mergeVectors(probVect1, bLen1, fromTip1, probVect2, bLen2, fromTip2, returnLK, isUpDown):
-    """ Combine two partial-likelihood vectors meeting at a node/edge; optionally return LK.
+    """ 
+    https://github.com/NicolaDM/MAPLE/blob/main/MAPLEv0.7.5.py#L4442 link to maple code
+    Combine two partial-likelihood vectors meeting at a node/edge; optionally return LK.
 
 Inputs: ['probVect1', 'bLen1', 'fromTip1', 'probVect2', 'bLen2', 'fromTip2', 'returnLK', 'isUpDown']
 probVect1:
@@ -294,8 +324,6 @@ isUpDown:
 TODO: finish another day
 Outputs: see return docs in MAPLE source.
 """
-    pass
-
 
 # def findProbRoot(tree, node):
 #     """ Search for root that maximizes overall likelihood given current vectors/BLens.
@@ -306,7 +334,7 @@ Outputs: see return docs in MAPLE source.
 #     pass
 
 
-# TODO: 
+# TODO: don't need
 def rootVector(tree, node):
     """ Compute likelihood vector at (candidate) root by merging child partials.
 
