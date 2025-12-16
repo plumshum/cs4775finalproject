@@ -1164,7 +1164,8 @@ Outputs: see return docs in MAPLE source.
     children = tree.children
     distances = tree.dist
     parent = parents[cNode]
-
+    if parent is None:
+        return
 
     if cNode == children[parent][0] : #node is left child
          cIdx = 0
@@ -1175,8 +1176,10 @@ Outputs: see return docs in MAPLE source.
     
     vectDown = probDown[cNode]
 
+    if vectUp is None or vectDown is None:
+        return
     
-    bestLength = estimateBranchLengthWithDerivative(vectUp, vectDown, fromTipC=len(children[[cNode]]) == 0)
+    bestLength = estimateBranchLengthWithDerivative(vectUp, vectDown, fromTipC = (len(children[cNode]) == 0))
     distances[cNode] = bestLength
 
     dirty[parent] = True
@@ -1193,13 +1196,15 @@ def compare_entry_lengths(e1, e2):
     return len(e1) == len(e2)
 
 def compare_ACGTR_entry(entry1 ,entry2) :
-    if (abs(entry1[2] - entry2[2]) > THRESHOLD) : #compare branch lengths
-        return True
+    if len(entry1) > 2 and len(entry2) > 2: 
+        if (abs(entry1[2] - entry2[2]) > THRESHOLD) : #compare branch lengths
+            return True
     return False
 
 def compare_O_entry(entry1, entry2) :
-    if abs(entry1[2] - entry2[2]) > THRESHOLD : #compare branch lengths
-        return True
+    if len(entry1) > 2 and len(entry2) > 2:
+        if abs(entry1[2] - entry2[2]) > THRESHOLD : #compare branch lengths
+            return True
     for i in range(4) : #compare probabilities of each nucleotide
         diffVal = abs(entry1[-1][i] - entry2[-1][i])
         if (diffVal > thresholdDiffForUpdate) :
@@ -1223,7 +1228,7 @@ def areVectorsDifferent(probVect1, probVect2):
 Inputs: ['probVect1', 'probVect2']
 Outputs: see return docs in MAPLE source.
 """
-    if probVect1 == None or probVect2 == None :
+    if probVect1 is None or probVect2 is None :
         return False
     pos = 0
     for i in range (len(probVect1)) :

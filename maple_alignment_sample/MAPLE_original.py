@@ -5430,7 +5430,7 @@ def areVectorsDifferent(probVect1,probVect2):
 				if len(entry1)>3:
 					if abs(entry1[3] - entry2[3])>thresholdProb:
 						return True
-					if len(entry1)>4:
+					if len(entry1)>4: 
 						if abs(entry1[4] - entry2[4])>thresholdProb:
 							return True
 			if entry1[0]<4:
