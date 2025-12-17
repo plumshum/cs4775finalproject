@@ -255,11 +255,10 @@ def probVectTerminalNode(diffs, tree, node, ref_seq):
     Inputs: ['diffs', 'tree', 'node', ref_seq]
     refseq: a list of numbers representing a sequence
     output: prob vector is a list of tuples (code,start index, stop index)
-    code 1 : Exact Match
-    code 2: Mismatch
+    code 4 : Exact Match (4,i) -> until index i
+    code 5: missing data (5,i) -> until index i
+    0-3: Mismatch (a,b) -> is letter a, but letter has code b
     """
-    # todo: check about vairble ref  -> if numeric vesion of code
-    # todo: ask is everything zero indexed? Note, tree uses mutation
     # set up varibles + base case
     probVect = [] # retunrs a list of trriples(code,start index, stop index(
     ref_numbers = [convertLetterToNumber(i) for i in ref_seq] # convert ref to numeric
@@ -268,12 +267,17 @@ def probVectTerminalNode(diffs, tree, node, ref_seq):
         print("Invalid call to probVectTerminalNode, empty arguments" )
         return None
     
-    for (letter,position) in diffs:
+    for d in diffs:
+        letter = d[0]
+        position = d[1]
         position0 = position - 1 # convert to zero index
         if (position > index):
             probVect.append((4,position0))
-            index = position0# after we append, we shift our index
-        else: # TODO: is it else or every time?
+            index = position0 # after we append, we shift our index
+        elif(letter == "n"):
+            length = d[2] # case when ambisiogity
+            probVect.append((5,position0 +length))
+        else: # all other cases: ACGT
             letter_num = convertLetterToNumber(letter)
             if letter_num is None:
                 print("Invalid letter in diffs: " + letter)
@@ -285,9 +289,24 @@ def probVectTerminalNode(diffs, tree, node, ref_seq):
             else:
                 probVect.append((letter_num,position0))
     # add final match to the end if needed
-    if index < lref: 
+    if index < lref: # lref -> length of reference sequence
         probVect.append((4,lref))
-        
+
+    if node != None:
+        up = tree.up
+        mutations = tree.mutations
+        listNodes = [node]
+        nextNode = node
+        while up[nextNode] != None:
+            nextNode = up[nextNode]
+            listNodes.append(nextNode)
+        while listNodes:
+            nextNode = listNodes.pop()
+            if mutations[nextNode]:
+                probVect = passGenomeListThroughBranch(probVect, mutations[nextNode])  # ,modifyCurrentList=True
+
+
+
     return probVect
 
 # Note: updateProbVectTerminalNode moved to archived functions
