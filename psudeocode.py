@@ -40,7 +40,6 @@
 #
 # NOTE: This is a documentation scaffold. All functions 'pass'.
 import numpy as np
-import sympy
 import sys
 
 class Tree(object):
@@ -99,17 +98,12 @@ errorRateGlobal=None
 cumulativeRate=[0.0]
 refIndeces = []
 
-oneMutBLen=1.0/lref
-
-# Fraction of a mutation to be considered as a precision for branch length estimation (default 0.001, which means branch lengths estimated up to a 1000th of a mutation precision).
-minBLenSensitivity= 0.001 * oneMutBLen
-
 def collectReference(fileName):
     """ Read a FASTA-like reference from file and return reference sequence.
 
-Inputs: ['fileName']
-Outputs: see return docs in MAPLE source.
-"""
+    Inputs: ['fileName']
+    Outputs: see return docs in MAPLE source.
+    """
     ref_seq = ""
     with open(fileName) as file:
         for line in file:
@@ -123,9 +117,9 @@ Outputs: see return docs in MAPLE source.
 def readConciseAlignment(fileName, extractReference, ref, onlyRef):
     """ Read MAPLE 'concise alignment' format; optionally extract embedded reference.
 
-Inputs: ['fileName', 'extractReference', 'ref', 'onlyRef']
-Outputs: if extractReference is True, returns (ref, data); else returns str data.
-"""
+    Inputs: ['fileName', 'extractReference', 'ref', 'onlyRef']
+    Outputs: if extractReference is True, returns (ref, data); else returns str data.
+    """
     if fileName.endswith(".gz"):
         import gzip
         fileI = gzip.open(fileName, 'rt')
@@ -242,6 +236,7 @@ def updateSubMatrix(model, oldMutMatrix):
 
 def convertLetterToNumber(letter):
     """ Convert a letter to a number. also checks validty"""
+    letter = letter.upper()
     if letter == "A":
         return 0
     elif letter == "C":
@@ -257,13 +252,12 @@ def convertLetterToNumber(letter):
 def probVectTerminalNode(diffs, tree, node, ref_seq):
     """ Create a terminal-node probability vector from sample/reference diffs at a node.
 
-Inputs: ['diffs', 'tree', 'node', ref_seq]
-refseq: a list of numbers representing a sequence
-Outputs: see return docs in MAPLE source.
-output: prob vector is a list of tuples (code,start index, stop index)
-code 1 : Exact Match
-code 2: Mismatch
-"""
+    Inputs: ['diffs', 'tree', 'node', ref_seq]
+    refseq: a list of numbers representing a sequence
+    output: prob vector is a list of tuples (code,start index, stop index)
+    code 1 : Exact Match
+    code 2: Mismatch
+    """
     # todo: check about vairble ref  -> if numeric vesion of code
     # todo: ask is everything zero indexed? Note, tree uses mutation
     # set up varibles + base case
@@ -273,18 +267,27 @@ code 2: Mismatch
     if (diffs == None or tree == None):
         print("Invalid call to probVectTerminalNode, empty arguments" )
         return None
+    
     for (letter,position) in diffs:
+        position0 = position - 1 # convert to zero index
         if (position > index):
-            probVect.append((1,index,position))
-            index = position# after we append, we shift our index
-        else:
+            probVect.append((4,position0))
+            index = position0# after we append, we shift our index
+        else: # TODO: is it else or every time?
             letter_num = convertLetterToNumber(letter)
-            sequence_num= ref_numbers[position]
+            if letter_num is None:
+                print("Invalid letter in diffs: " + letter)
+                return None
+            sequence_num= ref_numbers[position0]
             if (letter_num== sequence_num):
-                probVect.append((1,index,position))
-                index = position + 1
+                probVect.append((letter_num,position0))
+                index = position0 + 1
             else:
-                probVect.append((2,position,position))
+                probVect.append((letter_num,position0))
+    # add final match to the end if needed
+    if index < lref: 
+        probVect.append((4,lref))
+        
     return probVect
 
 # Note: updateProbVectTerminalNode moved to archived functions
@@ -331,9 +334,29 @@ useRateVariation = False
 errorRateSiteSpecific = False 
 minimumCarryOver=sys.float_info.min*(1e50)
 totError = None
-globalTotRate=float('inf') # remark: orignial -float(lref)
+globalTotRate=0.0# remark: orignial -float(lref)
+# TODO: but prob should do lref*0.75
 
 # beginning of merge vectors code
+def determineState(probVec, refNuc):
+    """
+    Helper func
+    Determine the state code from a probability vector.
+    Returns:
+        - 0-3: specific nucleotide if one has probability ~1
+        - 4: Reference if all low/equal
+        - 6: "O" (other/ambiguous) if mixed probabilities
+    """
+    maxProb = max(probVec)
+    maxIdx = probVec.index(maxProb)
+    
+    if maxProb > 0.99:  # Nearly certain
+        return maxIdx  # Return 0-3 (A, C, G, T)
+    elif maxProb < 0.3:  # All roughly equal
+        return 4  # Reference
+    else:
+        return 6  # Mixed/"O"
+
 def handler_helper(ctx):
     if ctx["returnLK"]:
         ctx["cumulPartLk"] += (ctx["bLen1"] + ctx["bLen2"]) * (ctx["cumulativeRateUsed"][ctx["pos"]] - ctx["cumulativeRateUsed"][ctx["newPos"]])
@@ -646,7 +669,7 @@ def handler_other(ctx):
         for ctx["i"] in range(4):
             ctx["newVec"][ctx["i"]] /= ctx["totSum"]
 
-        ctx["state"] = sympy.simplify(ctx["newVec"], ctx["refNucToPass"])
+        ctx["state"] = determineState(ctx["newVec"], ctx["refNucToPass"])
         if ctx["state"] == 6:
             ctx["probVect"].append((6, ctx["refNucToPass"], ctx["newVec"]))
         else:
@@ -666,7 +689,7 @@ def mergeVectors(probVect1, bLen1, fromTip1, probVect2, bLen2, fromTip2,
                  errorRateGlobalPassed=None, mutMatrixGlobalPassed=None,
                  errorRatesGlobal=None, mutMatricesGlobal=None,
                  cumulativeRateGlobal=None, cumulativeErrorRateGlobal=None):
-    
+    global lref
     # propagating handler map
     handler_map = {}
     handler_map[(5, 5)] = handler_5_5
@@ -821,10 +844,6 @@ Inputs: ['tree', 'node']
 Outputs: see return docs in MAPLE source.
 """
     pass
-
-
-# def estimateBranchLengthWithDerivative(probVectP, probVectC, fromTipP, fromTipC, mutMatrix, minBL, maxBL, precision, errorRate, pseudoCountsGlobal, mutMatricesGlobal, cumulativeRateGlobal):
-
     
 # NOTE: this is a helper function from MAPLE_original.py
 # Flags have been fixed to False, None or [0.0]
@@ -835,6 +854,7 @@ def estimateBranchLengthWithDerivative(probVectP,probVectC,fromTipC=False,errorR
     Inputs: ['probVectP', 'probVectC', 'fromTipP', 'fromTipC', 'mutMatrix', 'minBL', 'maxBL', 'precision', 'errorRate', 'pseudoCountsGlobal', 'mutMatricesGlobal', 'cumulativeRateGlobal']
     Outputs: see return docs in MAPLE source.
     """
+    global lref
     mutMatricesUsed = None  # because rateLimiter is false, this is not used
     if mutMatrixGlobalPassed!=None:
         mutMatrix=mutMatrixGlobalPassed
@@ -1152,9 +1172,9 @@ def estimateBranchLengthWithDerivative(probVectP,probVectC,fromTipC=False,errorR
 def updateBLen(tree, cNode, addToList, nodeList):
     """ Commit a branch-length change and update impacted node lists/vectors.
 
-Inputs: ['tree', 'cNode', 'addToList', 'nodeList']
-Outputs: see return docs in MAPLE source.
-"""
+    Inputs: ['tree', 'cNode', 'addToList', 'nodeList']
+    Outputs: see return docs in MAPLE source.
+    """
     # store local variables
     parents = tree.up
     dirty = tree.dirty
@@ -1175,8 +1195,7 @@ Outputs: see return docs in MAPLE source.
     
     vectDown = probDown[cNode]
 
-    
-    bestLength = estimateBranchLengthWithDerivative(vectUp, vectDown, fromTipC=len(children[[cNode]]) == 0)
+    bestLength = estimateBranchLengthWithDerivative(vectUp, vectDown, fromTipC=len(children[cNode]) == 0)
     distances[cNode] = bestLength
 
     dirty[parent] = True
@@ -1184,6 +1203,7 @@ Outputs: see return docs in MAPLE source.
     if addToList: # need to schedule nodes for further 
          nodeList.append((cNode, 2, True, False))
          nodeList.append((parent, cIdx, True, False))
+    
 
 
 def compare_entry_type(e1,e2) :
@@ -1266,61 +1286,96 @@ def _bl_str(bl):
         return ":" + str(bl)
 
 # Helper to generate node label (name, support, mutations, lineage)
-def _label(node, includeSupports, minSupport, includeMutationList, performLineageAssignmentByRefPlacement):
+def _label(tree, nodeIdx, includeSupports, minSupport, includeMutationList, performLineageAssignmentByRefPlacement):
+    """
+    Generate label string for a node in Newick format.
+    
+    Args:
+        tree: Tree object with list-based node data
+        nodeIdx: Integer index of the node
+        includeSupports: Whether to include support values
+        minSupport: Minimum support value to display
+        includeMutationList: Whether to include mutation annotations
+        performLineageAssignmentByRefPlacement: Whether to include lineage info
+    
+    Returns:
+        String label for the node (may be empty for internal nodes without annotations)
+    """
     parts = []
-    name = node.name if hasattr(node, 'name') else None
     
-    # name/tip label
-    if name is not None:
+    # 1. Get node name (for tips/leaves)
+    name = tree.name[nodeIdx] if nodeIdx < len(tree.name) else None
+    
+    # Add name if it exists and is non-empty
+    if name is not None and name != "":
         parts.append(str(name))
-
-    # lineage annotation
-    if performLineageAssignmentByRefPlacement and hasattr(node, 'lineage'):
-        # Assuming only basic lineage is needed here, if more complex metadata is
-        # required, use the stringForNode logic from your original implementation.
-        if node.lineage:
-            parts.append(f"[lineage={node.lineage}]")
-
-    # supports for internal nodes
-    if includeSupports and hasattr(node, "support"):
-        support = node.support
-        sup_float = float(support)
-        if (minSupport is None) or (sup_float >= float(minSupport)):
-            # Newick annotations usually use the & key-value format for internal nodes
-            if abs(sup_float - int(sup_float)) < 1e-6:
-                parts.append(f"support={int(sup_float)}")
-            else:
-                parts.append(f"support={sup_float:.3f}")
-
-    # mutation list
-    if includeMutationList and hasattr(node, 'mutations'):
-        muts = node.mutations
-        if muts:
-            if isinstance(muts, (list, tuple)):
-                mut_str = ",".join(map(str, muts))
-            else:
-                mut_str = str(muts)
-            parts.append(f"mut={mut_str}")
     
-    # Combine parts: tip name, then metadata in [&key=value,...]
-    # This assumes the node is NOT the root of the entire output tree
+    # 2. Lineage annotation (if applicable)
+    if performLineageAssignmentByRefPlacement:
+        # Check if tree has a lineage attribute/list
+        if hasattr(tree, 'lineage') and nodeIdx < len(tree.lineage):
+            lineage = tree.lineage[nodeIdx]
+            if lineage:  # Only add if lineage exists
+                parts.append(f"lineage={lineage}")
+    
+    # 3. Support values for internal nodes
+    if includeSupports:
+        # Check if tree has support values
+        if hasattr(tree, 'support') and nodeIdx < len(tree.support):
+            support = tree.support[nodeIdx]
+            
+            # Only include if support meets minimum threshold
+            if support is not None:
+                try:
+                    sup_float = float(support)
+                    
+                    # Check against minimum support threshold
+                    if minSupport is None or sup_float >= float(minSupport):
+                        # Format as integer if it's a whole number
+                        if abs(sup_float - int(sup_float)) < 1e-6:
+                            parts.append(f"support={int(sup_float)}")
+                        else:
+                            parts.append(f"support={sup_float:.3f}")
+                except (ValueError, TypeError):
+                    # If conversion fails, skip support
+                    pass
+    
+    # 4. Mutation list
+    if includeMutationList:
+        # Check if tree has mutations
+        if hasattr(tree, 'mutations') and nodeIdx < len(tree.mutations):
+            muts = tree.mutations[nodeIdx]
+            
+            if muts:  # Only add if mutations exist
+                # Format mutation list
+                if isinstance(muts, (list, tuple)) and len(muts) > 0:
+                    # Convert mutation entries to strings
+                    # Assuming mutations are like [(pos, from_base, to_base), ...]
+                    mut_str = ",".join(str(m) for m in muts)
+                    parts.append(f"mut={mut_str}")
+                elif isinstance(muts, str):
+                    parts.append(f"mut={muts}")
+    
+    # 5. Assemble the final label
     if not parts:
-        return ""
+        return ""  # No label needed
     
-    if len(parts) == 1 and name is not None and parts[0] == name:
-        return name
+    # Separate name from metadata
+    if name is not None and name != "" and len(parts) > 0 and parts[0] == str(name):
+        # First part is the name
+        name_part = parts[0]
+        meta_parts = parts[1:]
+    else:
+        # No name, all parts are metadata
+        name_part = ""
+        meta_parts = parts
     
-    # If the first part is a name, it goes outside the [&...] block.
-    # Otherwise, everything goes inside.
-    name_part = parts[0] if name is not None and parts[0] == name else ""
-    meta_parts = parts if name is None or parts[0] != name else parts[1:]
-
+    # Format: "name[&key=value,key=value,...]"
     if meta_parts:
-        # Newick allows metadata in square brackets [&...] after a node name/group.
         meta_string = f"[&{','.join(meta_parts)}]"
         return f"{name_part}{meta_string}"
-    
-    return name_part
+    else:
+        return name_part
 
 
 def createNewick(tree, root_node_id,
@@ -1370,20 +1425,20 @@ def createNewick(tree, root_node_id,
             # 3. up--leaving a node: a leaf, or an internal node after processing children; go back up to parent
 
             # get node label and branch length
-            node_bl = dist[nextNode]
+            node_bl = tree.dist[nextNode]
             
             # TODO: could check for the special case of 0-branch-length unary nodes (not implemented here)
 
             # If a leaf, append its label
             # Hannah's NOTE: label does not use tree in the args, so I removed it for now
             if is_leaf:
-                label_str = _label(nextNode, includeSupports, minSupport, includeMutationList, performLineageAssignmentByRefPlacement)
+                label_str = _label(tree, nextNode, includeSupports, minSupport, includeMutationList, performLineageAssignmentByRefPlacement)
                 stringList.append(label_str)
 
             # If internal, append ')' followed by the label (if any)
             if not is_leaf:
                 stringList.append(")")
-                label_str = _label(nextNode, includeSupports, minSupport, includeMutationList, performLineageAssignmentByRefPlacement)
+                label_str = _label(tree, nextNode, includeSupports, minSupport, includeMutationList, performLineageAssignmentByRefPlacement)
                 stringList.append(label_str)
 
             # append branch length (always after label/group)
@@ -1626,7 +1681,244 @@ def findBestParentForNewSample(tree, newSampleDiffs, ref_seq, mutMatrix):
     - bestBranchLen: optimal length of branch to attach
     - bestlikelihood: log-likelihood of best placecment 
     """
+    bestNode = None
+    bestBranchLen = 0.0
+    bestLikelihood = float('-inf')
     
+    # We need a probabily vector for each new ample
+    newSampleProbVect = probVectTerminalNode(newSampleDiffs, tree, None, ref_seq)
+    
+    # Traverse the tree to find the best placement. We try to attach to each existing node
+    for nodeIdx in range(len(tree.up)):
+        # Skip if node doesn't exist or is being processed
+        if tree.probVect[nodeIdx] is None: continue
+        
+        # Get probablity vector at this potential parent node
+        parentProbVect = tree.probVect[nodeIdx]
+        
+        # Try different branch lengths to find optimal
+        # TODO: find better branch lengths discovery
+        for branchLen in [0.0001, 0.001, 0.01, 0.1, 0.5, 1.0]:
+            # Merge the new sample vector with parent vector
+            mergedVectResult = mergeVectors(
+                probVect1=parentProbVect,
+                bLen1=0.0,
+                fromTip1=False,
+                probVect2=newSampleProbVect,
+                bLen2=branchLen,
+                fromTip2=True, #New sample is a tip
+                returnLK=True, # This returns a likelihood score
+                isUpDown=False
+            )
+            
+            if mergedVectResult is None: continue 
+            
+            mergedVect, likelihood = mergedVectResult
+            
+            # Track best placement
+            if likelihood > bestLikelihood:
+                bestLikelihood = likelihood
+                bestNode = nodeIdx
+                bestBranchLen = branchLen
+    return bestNode, bestBranchLen, bestLikelihood
+
+def placeSampleOnTree(tree, newSampleName, newSampleDiffs, parentNode, branchLen, ref_seq):
+    """
+    Insert a new sample into the tree at the specified parent node.
+    
+    Strategy:
+    - If attaching to a tip: create new internal node between parent and tip
+    - If attaching to internal node: add as new child
+    
+    Inputs:
+        tree: Tree object
+        newSampleName: Name of new sample
+        newSampleDiffs: List of (letter, position) mutations
+        parentNode: Index of parent node to attach to
+        branchLen: Branch length for new sample
+        ref_seq: Reference sequence
+    
+    Returns:
+        newNodeIdx: Index of newly created node
+    """
+    # Create new node for the sample
+    tree.addNode(dirtiness=True)
+    newNodeIdx = len(tree.up) - 1
+    
+    # Set new tree node properties
+    tree.name[newNodeIdx] = newSampleName
+    tree.dist[newNodeIdx] = branchLen
+    
+    # Create probability vector for this new sample
+    tree.probVect[newNodeIdx] = probVectTerminalNode(
+        diffs=newSampleDiffs,
+        tree=tree,
+        node=newNodeIdx,
+        ref_seq=ref_seq
+    )
+
+    # Add to parent's children
+    tree.children[parentNode].append(newNodeIdx)
+    
+    # Dirty parent node to signal likelihood recalulation needed
+    tree.dirty[parentNode] = True
+    
+    # Restructure: if parent has too many children, we need to restructure by creating internal nodes
+    if len(tree.children[parentNode]) > 2:
+        # Create new internal node
+        tree.addNode(dirtiness=True)
+        internalIdx = len(tree.up)-1
+        
+        #Move last two children to new internal node
+        child1=tree.children[parentNode][-2]
+        child2=tree.children[parentNode][-1]
+        
+        tree.children[parentNode] = tree.children[parentNode][:-2] 
+        tree.children[parentNode].append(internalIdx)
+        tree.children[internalIdx] = [child1, child2] 
+        
+        tree.up[internalIdx] = parentNode
+        tree.up[child1] = internalIdx
+        tree.up[child2] = internalIdx
+        
+        tree.dist[internalIdx] = 0.0 # zero-length internal branch
+        
+        # Mark internal node as dirty to recalc likelihoods
+        tree.dirty[internalIdx] = True
+        
+    return newNodeIdx  
+
+def updateProbVectAtNode(tree, nodeIdx, childIdx, mutMatrix):
+    """
+    Update the probability vector at a given node after branch length changes.
+    
+    Inputs:
+        tree: Tree object
+        nodeIdx: Index of node to update
+        childIdx: Index of child that triggered update
+        mutMatrix: Substitution matrix
+    Returns:
+        None
+    """
+    # If node has children, merge their vectors
+    if len(tree.children[nodeIdx]) == 2:
+        child1 = tree.children[nodeIdx][0]
+        child2 = tree.children[nodeIdx][1]
+        
+        # Get partial vectors from children
+        vect1 = getPartialVec(
+            i12=6,  # Code for probability vector
+            totLen=tree.dist[child1],
+            mutMatrix=mutMatrix,
+            errorRate=0.0,
+            vect=tree.probVect[child1],
+            upNode=False,
+            flag=False
+        )
+        
+        vect2 = getPartialVec(
+            i12=6,
+            totLen=tree.dist[child2],
+            mutMatrix=mutMatrix,
+            errorRate=0.0,
+            vect=tree.probVect[child2],
+            upNode=False,
+            flag=False
+        )
+        
+        # Merge at this node
+        mergedVect, _ = mergeVectors(
+            probVect1=vect1,
+            bLen1=tree.dist[child1],
+            fromTip1=(len(tree.children[child1]) == 0),
+            probVect2=vect2,
+            bLen2=tree.dist[child2],
+            fromTip2=(len(tree.children[child2]) == 0),
+            returnLK=False,
+            isUpDown=False
+        )
+        
+        tree.probVect[nodeIdx] = mergedVect
+    
+    # Mark as clean
+    tree.dirty[nodeIdx] = False
+
+def optimizeBranchLengths(tree, mutMatrix, maxIterations=5):
+    """
+    Optimize all branch lengths in the tree using likelihood derivatives.
+    
+    Inputs:
+        tree: Tree object
+        mutMatrix: Substitution matrix
+        maxIterations: Max number of optimization passes
+    
+    Returns:
+        converged: True if optimization converged
+    """
+    print(f"\nOptimizing branch lengths...")
+    
+    for iteration in range(maxIterations):
+        print(f"  Iteration {iteration + 1}/{maxIterations}")
+        
+        # Track if any branch length changed significantly
+        anyChange = False
+        nodeList = []
+        
+        # Iterate through all nodes (except root which has no parent branch)
+        for nodeIdx in range(len(tree.up)):
+            if tree.up[nodeIdx] is None:  # Root node
+                continue
+            
+            # Only optimize if node is marked dirty or first iteration
+            if not tree.dirty[nodeIdx] and iteration > 0:
+                continue
+            
+            # Optimize this branch
+            parentIdx = tree.up[nodeIdx]
+            
+            # Get probability vectors
+            probVectParent = tree.probVect[parentIdx]
+            probVectChild = tree.probVect[nodeIdx]
+            
+            if probVectParent is None or probVectChild is None:
+                continue
+            
+            # Get current branch length
+            oldBranchLen = tree.dist[nodeIdx]
+            
+            # Optimize branch length using derivative
+            # TODO: might need to change params i.e fromTipP
+            newBranchLen = estimateBranchLengthWithDerivative(
+                probVectP=probVectParent,
+                probVectC=probVectChild,
+                fromTipC=len(tree.children[nodeIdx]) == 0
+            )
+            
+            # Check if branch length changed significantly
+            if abs(newBranchLen - oldBranchLen) > 0.0001:
+                anyChange = True
+                
+                # Update branch length and mark affected nodes
+                updateBLen(
+                    tree=tree,
+                    cNode=nodeIdx,
+                    addToList=True,
+                    nodeList=nodeList
+                )
+                
+                print(f"    Node {nodeIdx}: {oldBranchLen:.6f} -> {newBranchLen:.6f}")
+        
+        # Update probability vectors for all dirty nodes
+        for (nodeIdx, childIdx, _, _) in nodeList:
+            updateProbVectAtNode(tree, nodeIdx, childIdx, mutMatrix)
+        
+        # Check convergence
+        if not anyChange:
+            print(f"  Converged after {iteration + 1} iterations")
+            return True
+    
+    print(f"  Did not fully converge after {maxIterations} iterations")
+    return False
  
 def main():
     """
@@ -1637,13 +1929,11 @@ def main():
     4. Output final tree in Newick format
     """
     # Initialize inputs
+    global lref, oneMutBLen, minBLenSensitivity, globalTotRate, refIndeces, cumulativeRate
     diffs = [('t', 313), ('g', 1832), ('c', 10029), ('c', 21618), ('t', 22917), ('c', 22995), ('a', 23063),
              ('c', 23604), ('a', 28271), ('g', 29742)] # from the sample from maple test
     node = 0
     tree = None
-    
-    # Cumulative Rates 
-    nonMutRates=[0,0,0,0]
     
     # ============================================================================
     # 1. READ INPUT
@@ -1651,11 +1941,31 @@ def main():
     print("Step 1: Reading input files...")
     
     # Read reference genome
-    refFile = "reference.fasta"  # TODO: find name
-    inputFile = "alignment.txt" # TODO: find name
+    # refFile = "./maple_alignment_sample/aligned_europe.fasta"
+    # inputFile = "./maple_alignment_sample/maple_europe.txt"
+    inputFile = "FinaProject/MAPLE_outputs_original/MAPLE_alignment_example.txt"
+    # ref = collectReference(refFile)
+    # lref = len(ref)
+    # print(f"Reference genome length: {len(ref)}")
     
-    ref = collectReference(refFile)
-    print(f"Reference genome length: {len(ref)}")
+    # Read alignment in MAPLE diff format w/ extractReference=True for now
+    ref, data = readConciseAlignment(inputFile, ref=None, extractReference=True, onlyRef=None)
+    lref = len(ref)
+    print(f"Reference is extracted from alignment file, ref length:", data)
+    if not isinstance(data, dict):
+        raise Exception("Alignment data should be a dictionary of sample_name: diffs")
+    
+    sampleNames = list(data.keys())
+    numSamples = len(sampleNames)
+    print(f"Number of samples: {numSamples}")
+    
+    # Cumulative Rates 
+    nonMutRates=[0,0,0,0]
+    
+    oneMutBLen=1.0/lref
+
+    # Fraction of a mutation to be considered as a precision for branch length estimation (default 0.001, which means branch lengths estimated up to a 1000th of a mutation precision).
+    minBLenSensitivity= 0.001 * oneMutBLen
     
     # fill in refIndeces    
     for i in range(lref):
@@ -1668,11 +1978,6 @@ def main():
         cumulativeRate.append(cumulativeRate[-1]+nonMutRates[ind])
     
     
-    # Read alignment in MAPLE diff format WITHOUT EXTRACT REFERENCE for now
-    data = readConciseAlignment(inputFile, extractReference=False, ref=ref, onlyRef=False)
-    if not isinstance(data, dict):
-        raise Exception("Alignment data should be a dictionary of sample_name: diffs")
-    print(f"Number of samples in alignment: {len(data)}")
     
     # ============================================================================
     # 2. INITIALIZE SUBSTITUTION MODEL
@@ -1684,6 +1989,8 @@ def main():
     
     # Update to normalized JC69 model
     updateSubMatrix("JC", mutMatrix)
+    globalTotRate = lref * 0.75 # JC69 total rate
+    mutMatrix = np.array(mutMatrix)
     print("Substitution matrix initialized:")
     print(mutMatrix)
     
@@ -1700,7 +2007,7 @@ def main():
     rootNode = 0
     
     # must check data is a dict
-    firstSample = list(data.keys())[0]
+    firstSample = sampleNames[0]
     tree.name[rootNode] = firstSample
     
     # Create probability vector for root sample 
@@ -1713,30 +2020,49 @@ def main():
     
     print(f"Root node created with sample: {firstSample}")
 
-    # TODO: Idea:
-    # - Loop through remaining samples
-    # - For each sample, find best placement using findBestParentForNewSample()
-        # findBestParentForNewSample(tree, newSampleDiffs, ref_seq, mutMatrix) where are these arguments from??
-    # - Place sample on tree using placeSampleOnTree()
-        #copy and paste placeSampleOnTree() from codebase?
-    
-    #***below TEMPORARILY copied and pasted from original code
-    # bestNode , bestScore, bestBranchLengths, bestPassedVect = findBestParentForNewSample(tree,t1,newPartials,numSamples,computePlacementSupportOnly=False, diffsTime=newPartialsTime)
-    # if bestBranchLengths!=None:
-    #     start=time()
-    #     newRoot=placeSampleOnTree(tree,bestNode,bestPassedVect,numSamples,bestScore, bestBranchLengths[0], bestBranchLengths[1], bestBranchLengths[2],pseudoMutCounts,newPartialsTime=newPartialsTime)
-    #     if newRoot!=None:
-    #         t1=newRoot
-
-    # - Optimize branch lengths using estimateBranchLengthWithDerivative()
-    # - Update genome lists using updatePartials()
+    # Place remaining samples one by one
+    for i, sampleName in enumerate(sampleNames[1:], start=1):
+        print(f"\nPlacing sample {i}/{numSamples-1}: {sampleName}")
+        
+        # Find best placement
+        bestNode, bestBLen, bestLK = findBestParentForNewSample(
+            tree=tree,
+            newSampleDiffs=data[sampleName],
+            ref_seq=ref,
+            mutMatrix=mutMatrix
+        )
+        
+        print(f"  Best parent: Node {bestNode}")
+        print(f"  Branch length: {bestBLen:.6f}")
+        print(f"  Log-likelihood: {bestLK:.2f}")
+        
+        # Place sample on tree
+        newNodeIdx = placeSampleOnTree(
+            tree=tree,
+            newSampleName=sampleName,
+            newSampleDiffs=data[sampleName],
+            parentNode=bestNode,
+            branchLen=bestBLen,
+            ref_seq=ref
+        )
+        
+        # Optimize branch lengths every 10 samples (or adjust frequency)
+        if (i % 10 == 0) or (i == numSamples - 1):
+            print(f"\n  Optimizing branch lengths after {i} placements...")
+            optimizeBranchLengths(tree, mutMatrix, maxIterations=3)
+            
+    # ============================================================================
+    # 4. FINAL OPTIMIZATION
+    # ============================================================================
+    print("\nStep 4: Final branch length optimization...")
+    optimizeBranchLengths(tree, mutMatrix, maxIterations=10)
     
     numSamples = len(data)
     print(f"Tree initialized with 1/{numSamples} samples")
     print("(Sequential placement of remaining samples not yet implemented)")
     
     # ============================================================================
-    # 4. OUTPUT TREE
+    # 5. OUTPUT TREE
     # ============================================================================
     print("\nStep 4: Writing output tree...")
     
@@ -1759,7 +2085,7 @@ def main():
     print(f"Newick string: {newickString}")
     
     # ============================================================================
-    # 5. SUMMARY STATISTICS
+    # 6. SUMMARY STATISTICS
     # ============================================================================
     print("\n" + "="*60)
     print("MAPLE Pipeline Complete!")
