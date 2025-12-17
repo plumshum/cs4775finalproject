@@ -1457,7 +1457,9 @@ def areVectorsDifferent(probVect1, probVect2):
 Inputs: ['probVect1', 'probVect2']
 Outputs: see return docs in MAPLE source.
 """
-    if probVect1 == None or probVect2 == None :
+    if probVect1 is probVect2:
+        return False
+    if probVect1 is None or probVect2 is None :
         return False
     pos = 0
     for i in range (len(probVect1)) :
@@ -1515,18 +1517,6 @@ def _is_tip(tree, node_idx):
     return len(tree.children[node_idx]) == 0
 
 
-def _postorder_nodes(tree, root_idx):
-    order = []
-    stack = [(root_idx, 0)]
-    while stack:
-        node, state = stack.pop()
-        if state == 0:
-            stack.append((node, 1))
-            for ch in tree.children[node]:
-                stack.append((ch, 0))
-        else:
-            order.append(node)
-    return order
 
 
 def _preorder_nodes(tree, root_idx):
@@ -1547,6 +1537,10 @@ def _recompute_down_at_node(tree, node_idx):
     Assumes children probVects are already up-to-date.
     """
     children = tree.children[node_idx]
+       # DO NOT recompute until all children have valid probVect
+    for ch in children:
+        if tree.probVect[ch] is None:
+            return None
     if len(children) == 0:
         return tree.probVect[node_idx]
     if len(children) == 1:
@@ -1611,22 +1605,33 @@ def updatePartials(tree, nodeList=None, force=False):
             if is_dirty:
                 update_down_nodes.add(i)
 
-    # Ensure ancestors of changed nodes are updated too.
-    for node_idx in list(update_down_nodes):
-        p = tree.up[node_idx]
-        while p is not None and p not in update_down_nodes:
-            update_down_nodes.add(p)
-            p = tree.up[p]
+    # ---- Incremental bottom-up update driven by changes ----
+    work = list(update_down_nodes)
+    changed = set()
 
-    for node_idx in _postorder_nodes(tree, root_idx):
-        if node_idx not in update_down_nodes:
-            continue
+    while work:
+        node_idx = work.pop()
         old_vect = tree.probVect[node_idx]
         new_vect = _recompute_down_at_node(tree, node_idx)
+        if new_vect is None:
+        # children not ready yet → retry later
+            work.insert(0, node_idx)
+            continue
+
         if old_vect is None or areVectorsDifferent(old_vect, new_vect):
             tree.probVect[node_idx] = new_vect
-        # Mark as clean after recompute.
-        tree.dirty[node_idx] = False
+            tree.dirty[node_idx] = False
+            changed.add(node_idx)
+
+            parent = tree.up[node_idx]
+            if parent is not None:
+                work.append(parent)
+    # Nodes whose upward vectors may be affected
+    affected = set(changed)
+    for n in list(affected):
+        p = tree.up[n]
+        if p is not None:
+            affected.add(p)
 
     # ---- Top-down: recompute upward partials and per-child excluding vectors ----
     # We keep this step global for correctness; it is still MAPLE-style (totUp + per-child up vectors).
@@ -1635,6 +1640,8 @@ def updatePartials(tree, nodeList=None, force=False):
     tree.probVectUpRight[root_idx] = None
 
     for node_idx in _preorder_nodes(tree, root_idx):
+        if node_idx not in affected:
+            continue
         children = tree.children[node_idx]
         if len(children) == 0:
             continue
@@ -2395,6 +2402,16 @@ def placeSampleOnTree(tree, newSampleName, newSampleDiffs, parentNode, childNode
     tree.dirty[childNode] = True
     tree.dirty[newLeafIdx] = True
 
+    # Incremental partial-likelihood update (MAPLE-style)
+    nodeList = [
+        (newLeafIdx, 2, True, False),
+        (internalIdx, 2, True, False),
+        (childNode,   2, True, False),
+        (parentNode,  2, True, False),
+    ]
+
+    updatePartials(tree, nodeList=nodeList)
+
     return newLeafIdx
 
 def updateProbVectAtNode(tree, nodeIdx, childIdx, mutMatrix):
@@ -2534,7 +2551,7 @@ def main():
     # Read reference genome
     # refFile = "./maple_alignment_sample/aligned_europe.fasta"
     # inputFile = "./maple_alignment_sample/maple_europe.txt"
-    inputFile = "FinaProject/maple_alignment_sample/MAPLE_alignment_example.txt"
+    inputFile = "maple_alignment_sample/MAPLE_alignment_example.txt"
     # ref = collectReference(refFile)
     # lref = len(ref)
     # print(f"Reference genome length: {len(ref)}")
@@ -2664,8 +2681,6 @@ def main():
             ref_seq=ref
         )
 
-        # Refresh partials after topology change (insertion/restructuring).
-        updatePartials(tree, force=True)
         
         
         # Optimize branch lengths every 10 samples (or adjust frequency)
