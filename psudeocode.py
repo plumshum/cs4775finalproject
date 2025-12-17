@@ -292,19 +292,14 @@ def probVectTerminalNode(diffs, tree, node, ref_seq):
     if index < lref: # lref -> length of reference sequence
         probVect.append((4,lref))
 
-    if node != None:
-        up = tree.up
+    if node != None: # a simple tree travesel, going from leaf to root
         mutations = tree.mutations
-        listNodes = [node]
+        listNodes = [] # ancestor nodes list
         nextNode = node
-        while up[nextNode] != None:
-            nextNode = up[nextNode]
+        while nextNode != None: # there is a next-next node
             listNodes.append(nextNode)
-        while listNodes:
-            nextNode = listNodes.pop()
-            if mutations[nextNode]:
-                probVect = passGenomeListThroughBranch(probVect, mutations[nextNode])  # ,modifyCurrentList=True
-
+            nextNode = tree.up(nextNode)
+    # don't need the above code, unless we go optiamtion 
 
 
     return probVect
