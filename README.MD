@@ -40,3 +40,9 @@ Our code is divided into three steps:
 'Maple aligned files': how is different from VCF?
 
 - 'VCF': V
+
+
+
+# Extra
+Set-Alias pypy3 "C:\Users\hanna\Documents\cs4775\pypy3.11-v7.3.20-win64\pypy3.exe"
+pypy3 psudeocode.py
