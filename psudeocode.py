@@ -2046,6 +2046,7 @@ def main():
             ref_seq=ref
         )
         
+        
         # Optimize branch lengths every 10 samples (or adjust frequency)
         if (i % 10 == 0) or (i == numSamples - 1):
             print(f"\n  Optimizing branch lengths after {i} placements...")
