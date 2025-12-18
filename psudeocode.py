@@ -41,6 +41,8 @@
 # NOTE: This is a documentation scaffold. All functions 'pass'.
 import numpy as np
 import sys
+from memory_profiler import memory_usage
+import matplotlib.pyplot as plt
 
 class Tree(object):
 	def __init__(self):
@@ -292,14 +294,7 @@ def probVectTerminalNode(diffs, tree, node, ref_seq):
     if index < lref: # lref -> length of reference sequence
         probVect.append((4,lref))
 
-    if node != None: # a simple tree travesel, going from leaf to root
-        mutations = tree.mutations
-        listNodes = [] # ancestor nodes list
-        nextNode = node
-        while nextNode != None: # there is a next-next node
-            listNodes.append(nextNode)
-            nextNode = tree.up(nextNode)
-    # don't need the above code, unless we go optiamtion 
+    # don't need the above code, unless we go optiamtion
 
 
     return probVect
@@ -1956,8 +1951,8 @@ def main():
     
     # Read reference genome
     # refFile = "./maple_alignment_sample/aligned_europe.fasta"
-    # inputFile = "./maple_alignment_sample/maple_europe.txt"
-    inputFile = "FinaProject/MAPLE_outputs_original/MAPLE_alignment_example.txt"
+    inputFile = "./maple_alignment_sample/maple_europe.txt"
+    #inputFile = "FinaProject/MAPLE_outputs_original/MAPLE_alignment_example.txt"
     # ref = collectReference(refFile)
     # lref = len(ref)
     # print(f"Reference genome length: {len(ref)}")
@@ -2110,8 +2105,21 @@ def main():
     print(f"Samples placed: 1 (root only)")
     print(f"Output: {outputFile}")
     print("="*60)
+    # track memory
+
 
 
 if __name__ == "__main__":
-    main()
+    mem = memory_usage((main, (), {}), interval=0.1)
+
+    # Save to PDF
+    plt.figure(figsize=(10, 6))
+    plt.plot(mem, linewidth=2)
+    plt.ylabel('Memory (MB)')
+    plt.xlabel('Time (0.1s intervals)')
+    plt.title('Memory Usage')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('memory_usage.pdf')  # Saves as PDF
+    print(f"Peak memory: {max(mem):.2f} MB")
    
