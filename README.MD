@@ -46,3 +46,6 @@ Our code is divided into three steps:
 # Extra
 Set-Alias pypy3 "C:\Users\hanna\Documents\cs4775\pypy3.11-v7.3.20-win64\pypy3.exe"
 pypy3 psudeocode.py
+
+
+pypy3 maple_alignment_sample/createMapleFile.py --path ./maple_alignment_sample --fasta /aligned_europe.fasta --output maple_aligned_europe.txt

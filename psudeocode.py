@@ -262,71 +262,66 @@ def _iter_diff_records(diffs):
         yield (str(letter).lower(), int(pos), length)
 
 def probVectTerminalNode(diffs, tree, node, ref_seq):
-    """ Create a terminal-node probability vector from sample/reference diffs at a node.
-
-    Inputs: ['diffs', 'tree', 'node', ref_seq]
-    refseq: a list of numbers representing a sequence
-    output: prob vector is a list of tuples (code,start index, stop index)
-    code 1 : Exact Match
-    code 2: Mismatch
     """
-    """Build a MAPLE-style genome-list vector for a tip.
-
-    Genome-list conventions (mirrors MAPLE_original.py):
-    - Entries of type 0-3 (A/C/G/T) are single-site and stored as (state, refNucAtSite).
-    - Entries of type 4 (R) and 5 (N) represent stretches and stored as (type, endPos_1idx).
-    - Positions are implicit by ordering; stretches advance the position pointer.
+    MAPLE-faithful construction of a terminal genome list.
     """
     global lref
+
     if diffs is None or ref_seq is None:
         raise ValueError("probVectTerminalNode requires diffs and ref_seq")
-    if lref is None:
-        lref = len(ref_seq)
-    else:
-        lref = int(lref)
-    if lref != len(ref_seq):
-        # Keep the global consistent with the actual reference we were passed.
-        lref = len(ref_seq)
+
+    lref = len(ref_seq)
 
     probVect = []
-    # 1-indexed position pointer (MAPLE format)
-    pos = 1
+    pos = 1  # 1-indexed genome position
 
     for (letter, start_pos, length) in _iter_diff_records(diffs):
         if start_pos < pos:
-            raise ValueError(f"Diff records must be sorted/non-overlapping: got start {start_pos} < current pos {pos}")
-        # Add reference stretch up to just before the diff start
+            raise ValueError(
+                f"Diff records must be sorted and non-overlapping "
+                f"(start {start_pos} < current pos {pos})"
+            )
+
+        # --- reference stretch before mutation ---
         if start_pos > pos:
             probVect.append((4, start_pos - 1))
             pos = start_pos
 
         end_pos = start_pos + length - 1
+
+        # --- N / missing data ---
         if letter in ("n", "-"):
-            # Missing/ambiguous stretch
             probVect.append((5, end_pos))
             pos = end_pos + 1
             continue
 
         state = convertLetterToNumber(letter)
         if state is None:
-            # Treat unknown symbols as N stretches.
             probVect.append((5, end_pos))
             pos = end_pos + 1
             continue
 
-        # Emit per-site entries for A/C/G/T. For each site we store (state, refNucAtSite).
+        # --- emit single-site mutations ONLY ---
         for p in range(start_pos, end_pos + 1):
             ref_nuc = convertLetterToNumber(ref_seq[p - 1])
             if ref_nuc is None:
                 ref_nuc = 0
             probVect.append((state, ref_nuc))
-        pos = end_pos + 1
+            pos += 1
 
-    # Close out remaining reference stretch.
+    # --- close remaining reference ---
     if pos <= lref:
-        probVect.append((4, lref))
+        _append_stretch(probVect, 4, lref)
 
     return probVect
+
+def _append_stretch(probVect, typ, end_pos):
+    if probVect and probVect[-1][0] == typ:
+        # Extend previous stretch
+        probVect[-1] = (typ, end_pos)
+    else:
+        probVect.append((typ, end_pos))
+
 
 # Note: updateProbVectTerminalNode moved to archived functions
 
@@ -720,6 +715,28 @@ def handler_other(ctx):
             ctx["totalFactor"] *= ctx["totSum"]
 
     ctx["pos"] = ctx["newPos"]
+    
+def advance_entry_if_needed(ctx, probVect, which):
+    indexKey = f"indexEntry{which}"
+    entryKey = f"entry{which}"
+
+    entry = ctx[entryKey]
+
+    # Single-site entries
+    if entry[0] < 4 or entry[0] == 6:
+        ctx[indexKey] += 1
+
+    # Stretch entries
+    elif ctx["pos"] == entry[1]:
+        ctx[indexKey] += 1
+
+    if ctx[indexKey] >= len(probVect):
+        return False
+
+    ctx[entryKey] = probVect[ctx[indexKey]]
+    return True
+
+
 
 
 def mergeVectors(probVect1, bLen1, fromTip1, probVect2, bLen2, fromTip2,
@@ -853,6 +870,16 @@ def mergeVectors(probVect1, bLen1, fromTip1, probVect2, bLen2, fromTip2,
 
         # update call
         handler_fxn(ctx)
+        
+        # AFTER handler and termination check
+        if not advance_entry_if_needed(ctx, probVect1, 1):
+            break
+
+        if not advance_entry_if_needed(ctx, probVect2, 2):
+            break
+
+        if ctx["pos"] == ctx["lRef"]:
+            break
 
         if ctx["returnLK"] and ctx["totalFactor"] <= ctx["minimumCarryOver"]:
             try:
@@ -868,11 +895,23 @@ def mergeVectors(probVect1, bLen1, fromTip1, probVect2, bLen2, fromTip2,
         if ctx["pos"] == ctx["lRef"]:
             break
 
+        if ctx["indexEntry1"] >= len(probVect1):
+            raise RuntimeError(
+                f"mergeVectors overflow: pos={ctx['pos']}, "
+                f"index1={ctx['indexEntry1']}, len1={len(probVect1)}"
+            )
+
         if ctx["entry1"][0] < 4 or ctx["entry1"][0] == 6:
             ctx["indexEntry1"] += 1
+            
             ctx["entry1"] = probVect1[ctx["indexEntry1"]]
         elif ctx["pos"] == ctx["entry1"][1]:
             ctx["indexEntry1"] += 1
+            # if ctx["indexEntry1"] >= len(probVect1):
+            #     raise RuntimeError(
+            #         f"mergeVectors overflow: pos={ctx['pos']}, "
+            #         f"index1={ctx['indexEntry1']}, len1={len(probVect1)}"
+            #     )
             ctx["entry1"] = probVect1[ctx["indexEntry1"]]
 
         if ctx["entry2"][0] < 4 or ctx["entry2"][0] == 6:
@@ -903,10 +942,48 @@ Inputs: ['tree', 'node']
 Outputs: see return docs in MAPLE source.
 """
     pass
+
+def advance_entry_if_needed_deriv(ctx, probVect, which):
+    """
+    Advance entry index if the current position has been fully processed.
+    Used specifically in estimateBranchLengthWithDerivative.
     
-# NOTE: this is a helper function from MAPLE_original.py
-# Flags have been fixed to False, None or [0.0]
-def estimateBranchLengthWithDerivative(probVectP,probVectC,fromTipC=False,errorRateGlobalPassed=None,mutMatrixGlobalPassed=None,errorRatesGlobal=None,mutMatricesGlobal=None,cumulativeRateGlobal=None):
+    Args:
+        ctx: Dictionary containing context (entry1, entry2, indexEntry1, indexEntry2, pos)
+        probVect: The probability vector to advance through
+        which: 1 for entry1, 2 for entry2
+        
+    Returns:
+        bool: True if we can continue, False if we've reached the end
+    """
+    indexKey = f"indexEntry{which}"
+    entryKey = f"entry{which}"
+    
+    entry = ctx[entryKey]
+    
+    # Single-site entries (nucleotides or type O)
+    if entry[0] < 4 or entry[0] == 6:
+        ctx[indexKey] += 1
+    
+    # Stretch entries (Reference or N-type)
+    elif ctx["pos"] == entry[1]:
+        ctx[indexKey] += 1
+    
+    # Check if we've gone past the end
+    if ctx[indexKey] >= len(probVect):
+        return False
+    
+    # Update the entry
+    ctx[entryKey] = probVect[ctx[indexKey]]
+    return True
+
+
+def estimateBranchLengthWithDerivative(probVectP, probVectC, fromTipC=False, 
+                                        errorRateGlobalPassed=None, 
+                                        mutMatrixGlobalPassed=None, 
+                                        errorRatesGlobal=None, 
+                                        mutMatricesGlobal=None, 
+                                        cumulativeRateGlobal=None):
     """
     Estimate branch length maximizing likelihood; optionally use derivatives.
 
@@ -915,315 +992,327 @@ def estimateBranchLengthWithDerivative(probVectP,probVectC,fromTipC=False,errorR
     """
     global lref
     mutMatricesUsed = None  # because rateLimiter is false, this is not used
-    if mutMatrixGlobalPassed!=None:
-        mutMatrix=mutMatrixGlobalPassed
+    if mutMatrixGlobalPassed != None:
+        mutMatrix = mutMatrixGlobalPassed
     else:
-        mutMatrix=mutMatrixGlobal
+        mutMatrix = mutMatrixGlobal
 
     # Note: usingErrorRate and errorRateSiteSpecific always set to False
     if usingErrorRate and errorRateSiteSpecific:
-        if errorRatesGlobal!=None:
-            errorRatesUsed=errorRatesGlobal
+        if errorRatesGlobal != None:
+            errorRatesUsed = errorRatesGlobal
         else:
-            errorRatesUsed=errorRates
+            errorRatesUsed = errorRates
     else:
-        if errorRateGlobalPassed==None:
-             errorRate=errorRateGlobal
+        if errorRateGlobalPassed == None:
+            errorRate = errorRateGlobal
         else:
-            errorRate=errorRateGlobalPassed
+            errorRate = errorRateGlobalPassed
     
-    if cumulativeRateGlobal!=None:
-        cumulativeRateUsed=cumulativeRateGlobal
+    if cumulativeRateGlobal != None:
+        cumulativeRateUsed = cumulativeRateGlobal
     else:
-        cumulativeRateUsed=cumulativeRate
+        cumulativeRateUsed = cumulativeRate
         
     if not (usingErrorRate and errorRateSiteSpecific):
-        errorRate=errorRateGlobal
+        errorRate = errorRateGlobal
     if not useRateVariation:
-        mutMatrix=mutMatrixGlobal
+        mutMatrix = mutMatrixGlobal
   
-    c1=globalTotRate
-    ais=[]
-    indexEntry1, indexEntry2, pos, contribLength, nZeros = 0, 0, 0, 0.0, 0
-    entry1=probVectP[indexEntry1]
-    entry2=probVectC[indexEntry2]
+    c1 = globalTotRate
+    ais = []
+    
+    # Initialize context dictionary
+    ctx = {
+        "indexEntry1": 0,
+        "indexEntry2": 0,
+        "pos": 0,
+        "entry1": probVectP[0],
+        "entry2": probVectC[0]
+    }
+    
+    contribLength, nZeros = 0.0, 0
+    
     while True:
-        if entry2[0]==5:
-            if entry1[0]==4 or entry1[0]==5:
-                end=min(entry1[1],entry2[1])
+        entry1 = ctx["entry1"]
+        entry2 = ctx["entry2"]
+        
+        if entry2[0] == 5:
+            if entry1[0] == 4 or entry1[0] == 5:
+                end = min(entry1[1], entry2[1])
             else:
-                end=pos+1
-            c1+=(cumulativeRateUsed[pos]-cumulativeRateUsed[end])
-            pos=end
-        elif entry1[0]==5: # case entry1 or entry2 is N
-			#if parent node is type "N", in theory we might have to calculate the contribution of root nucleotides; 
-			# however, if this node is "N" then every other node in the current tree is "N", so we can ignore this since this contribution cancels out in relative terms.
-            if entry2[0]==4:
-                end=min(entry1[1],entry2[1])
+                end = ctx["pos"] + 1
+            c1 += (cumulativeRateUsed[ctx["pos"]] - cumulativeRateUsed[end])
+            ctx["pos"] = end
+            
+        elif entry1[0] == 5:  # case entry1 or entry2 is N
+            # if parent node is type "N", in theory we might have to calculate the contribution of root nucleotides; 
+            # however, if this node is "N" then every other node in the current tree is "N", so we can ignore this since this contribution cancels out in relative terms.
+            if entry2[0] == 4:
+                end = min(entry1[1], entry2[1])
             else:
-                end=pos+1
-            c1+=(cumulativeRateUsed[pos]-cumulativeRateUsed[end])
-            pos=end
+                end = ctx["pos"] + 1
+            c1 += (cumulativeRateUsed[ctx["pos"]] - cumulativeRateUsed[end])
+            ctx["pos"] = end
+            
         else:
-			#below, when necessary, we represent the likelihood as coeff0*l +coeff1, where l is the branch length to be optimized.
-            if entry1[0]==4 and entry2[0]==4: # case entry1 and entry2 are R
-                pos=min(entry1[1],entry2[1])
+            # below, when necessary, we represent the likelihood as coeff0*l +coeff1, where l is the branch length to be optimized.
+            if entry1[0] == 4 and entry2[0] == 4:  # case entry1 and entry2 are R
+                ctx["pos"] = min(entry1[1], entry2[1])
             else:
                 if useRateVariation and mutMatricesUsed is not None:
-                    mutMatrix=mutMatricesUsed[pos]
+                    mutMatrix = mutMatricesUsed[ctx["pos"]]
                 
-                if entry1[0]==4:
-                    c1-=mutMatrix[entry2[1]][entry2[1]]
+                if entry1[0] == 4:
+                    c1 -= mutMatrix[entry2[1]][entry2[1]]
                 else:
-                    c1-=mutMatrix[entry1[1]][entry1[1]]
-                flag1 = (usingErrorRate and (entry1[0]!=6) and len(entry1)>2 and entry1[-1]) # flag1 true if error rate applies to entry1
-                flag2 = (usingErrorRate and (entry2[0]!=6) and (fromTipC or (len(entry2)>2 and entry2[-1])))
-                if usingErrorRate and errorRateSiteSpecific and errorRatesUsed is not None: errorRate = errorRatesUsed[pos]
+                    c1 -= mutMatrix[entry1[1]][entry1[1]]
+                    
+                flag1 = (usingErrorRate and (entry1[0] != 6) and len(entry1) > 2 and entry1[-1])  # flag1 true if error rate applies to entry1
+                flag2 = (usingErrorRate and (entry2[0] != 6) and (fromTipC or (len(entry2) > 2 and entry2[-1])))
+                if usingErrorRate and errorRateSiteSpecific and errorRatesUsed is not None: 
+                    errorRate = errorRatesUsed[ctx["pos"]]
 
-				#contribLength will be here the total length from the root or from the upper node, down to the down node.
-                contribLength=False
+                # contribLength will be here the total length from the root or from the upper node, down to the down node.
+                contribLength = False
                 if entry1[0] < 5:
-                    if len(entry1)==3+usingErrorRate:
-                        contribLength=entry1[2]
-                    elif len(entry1)==4+usingErrorRate:
-                        contribLength=entry1[3]
+                    if len(entry1) == 3 + usingErrorRate:
+                        contribLength = entry1[2]
+                    elif len(entry1) == 4 + usingErrorRate:
+                        contribLength = entry1[3]
                 else:
-                    if len(entry1)>3:
-                        contribLength=entry1[2]
-                if entry2[0]<5:
-                    if len(entry2)>2+usingErrorRate:
-                        contribLength+=entry2[2]
+                    if len(entry1) > 3:
+                        contribLength = entry1[2]
+                if entry2[0] < 5:
+                    if len(entry2) > 2 + usingErrorRate:
+                        contribLength += entry2[2]
                 else:
-                    if len(entry2)>3:
-                        contribLength+=entry2[2]
+                    if len(entry2) > 3:
+                        contribLength += entry2[2]
 
                 if entry1[0] == 4:
-					# entry1 is reference and entry2 is of type "O"
+                    # entry1 is reference and entry2 is of type "O"
                     if entry2[0] == 6:
-                        i1=entry2[1]
-                        if len(entry1)==(4+usingErrorRate):
-                            coeff0=rootFreqs[i1]*entry2[-1][i1] 
-                            coeff1=0.0
+                        i1 = entry2[1]
+                        if len(entry1) == (4 + usingErrorRate):
+                            coeff0 = rootFreqs[i1] * entry2[-1][i1]
+                            coeff1 = 0.0
                             for i in range(4):
-                                coeff0+=rootFreqs[i]*mutMatrix[i][i1]*entry1[2]*entry2[-1][i]
-                                coeff1+=mutMatrix[i1][i]*entry2[-1][i]
-                            coeff1*=rootFreqs[i1]
+                                coeff0 += rootFreqs[i] * mutMatrix[i][i1] * entry1[2] * entry2[-1][i]
+                                coeff1 += mutMatrix[i1][i] * entry2[-1][i]
+                            coeff1 *= rootFreqs[i1]
                             if contribLength:
-                                coeff0+=coeff1*contribLength
+                                coeff0 += coeff1 * contribLength
                             if flag1 and errorRate is not None:
-                                coeff0-=1.33333*errorRate*rootFreqs[i1]*entry2[-1][i1]
+                                coeff0 -= 1.33333 * errorRate * rootFreqs[i1] * entry2[-1][i1]
                                 for i in range(4):
-                                    coeff0+=rootFreqs[i]*entry2[-1][i]*0.33333*errorRate
+                                    coeff0 += rootFreqs[i] * entry2[-1][i] * 0.33333 * errorRate
                         else:
-                            coeff0=entry2[-1][i1]
-                            coeff1=0.0
+                            coeff0 = entry2[-1][i1]
+                            coeff1 = 0.0
                             for j in range(4):
-                                coeff1+=mutMatrix[i1][j]*entry2[-1][j]
+                                coeff1 += mutMatrix[i1][j] * entry2[-1][j]
                             if contribLength:
-                                coeff0+=coeff1*contribLength
-                        if coeff1<0.0:
-                            c1+=coeff1/coeff0
+                                coeff0 += coeff1 * contribLength
+                        if coeff1 < 0.0:
+                            c1 += coeff1 / coeff0
                         elif coeff1:
-                            coeff0=coeff0/coeff1
+                            coeff0 = coeff0 / coeff1
                             ais.append(coeff0)
-                        pos+=1
+                        ctx["pos"] += 1
 
-                    else: #entry1 is R and entry2 is a different but single nucleotide
-                        if len(entry1)==4+usingErrorRate:
-                            i1=entry2[1]
-                            i2=entry2[0]
-                            coeff0=rootFreqs[i2]*mutMatrix[i2][i1]*entry1[2]
+                    else:  # entry1 is R and entry2 is a different but single nucleotide
+                        if len(entry1) == 4 + usingErrorRate:
+                            i1 = entry2[1]
+                            i2 = entry2[0]
+                            coeff0 = rootFreqs[i2] * mutMatrix[i2][i1] * entry1[2]
                             if contribLength:
-                                coeff0+=rootFreqs[i1]*mutMatrix[i1][i2]*contribLength
+                                coeff0 += rootFreqs[i1] * mutMatrix[i1][i2] * contribLength
                             if flag2:
-                                coeff0+=rootFreqs[i1]*0.33333*errorRate
+                                coeff0 += rootFreqs[i1] * 0.33333 * errorRate
                             if flag1:
-                                coeff0+=rootFreqs[i2]*0.33333*errorRate
-                            coeff1=rootFreqs[i1]*mutMatrix[i1][i2]
+                                coeff0 += rootFreqs[i2] * 0.33333 * errorRate
+                            coeff1 = rootFreqs[i1] * mutMatrix[i1][i2]
                             if coeff1:
-                                coeff0=coeff0/coeff1
+                                coeff0 = coeff0 / coeff1
                             else:
-                                coeff0=None
+                                coeff0 = None
                         else:
-                            coeff0=contribLength
+                            coeff0 = contribLength
                             if flag2 and errorRate is not None:
                                 if mutMatrix[entry2[1]][entry2[0]]:
-                                    coeff0+=errorRate*0.33333/mutMatrix[entry2[1]][entry2[0]]
+                                    coeff0 += errorRate * 0.33333 / mutMatrix[entry2[1]][entry2[0]]
                                 else:
-                                    coeff0=None
-                        if coeff0!=None:	
+                                    coeff0 = None
+                        if coeff0 != None:
                             if coeff0:
                                 ais.append(coeff0)
                             else:
-                                nZeros+=1
-                        pos+=1
+                                nZeros += 1
+                        ctx["pos"] += 1
 
-				# entry1 is of type "O"
-                elif entry1[0]==6:
-                    if entry2[0]==6:
-                        coeff0=entry1[-1][0]*entry2[-1][0]+entry1[-1][1]*entry2[-1][1]+entry1[-1][2]*entry2[-1][2]+entry1[-1][3]*entry2[-1][3]
-                        coeff1=0.0
+                # entry1 is of type "O"
+                elif entry1[0] == 6:
+                    if entry2[0] == 6:
+                        coeff0 = entry1[-1][0] * entry2[-1][0] + entry1[-1][1] * entry2[-1][1] + entry1[-1][2] * entry2[-1][2] + entry1[-1][3] * entry2[-1][3]
+                        coeff1 = 0.0
                         for i in range(4):
                             for j in range(4):
-                                coeff1+=entry1[-1][i]*entry2[-1][j]*mutMatrix[i][j]
+                                coeff1 += entry1[-1][i] * entry2[-1][j] * mutMatrix[i][j]
                         if contribLength:
-                            coeff0+=coeff1*contribLength
-                    else: #entry1 is "O" and entry2 is a nucleotide
-                        if entry2[0]==4:
-                            i2=entry1[1]
+                            coeff0 += coeff1 * contribLength
+                    else:  # entry1 is "O" and entry2 is a nucleotide
+                        if entry2[0] == 4:
+                            i2 = entry1[1]
                         else:
-                            i2=entry2[0]
-                        coeff0=entry1[-1][i2]
-                        coeff1=0.0
+                            i2 = entry2[0]
+                        coeff0 = entry1[-1][i2]
+                        coeff1 = 0.0
                         for i in range(4):
-                            coeff1+=entry1[-1][i]*mutMatrix[i][i2]
+                            coeff1 += entry1[-1][i] * mutMatrix[i][i2]
                         if contribLength:
-                            coeff0+=coeff1*contribLength
+                            coeff0 += coeff1 * contribLength
                         if flag2 and errorRate is not None:
-                            coeff0+=errorRate*0.33333
-                    if coeff1<0.0:
-                        c1+=coeff1/coeff0
+                            coeff0 += errorRate * 0.33333
+                    if coeff1 < 0.0:
+                        c1 += coeff1 / coeff0
                     elif coeff1:
-                        coeff0=coeff0/coeff1
+                        coeff0 = coeff0 / coeff1
                         ais.append(coeff0)
-                    pos+=1
-                else: #entry1 is a non-ref nuc
-                    if entry2[0]==entry1[0]:
-                        c1+=mutMatrix[entry1[0]][entry1[0]]
-                    else: #entry1 is a nucleotide and entry2 is not the same as entry1
-                        i1=entry1[0]
-                        if entry2[0]<5: #entry2 is a nucleotide
-                            if entry2[0]==4:
-                                i2=entry1[1]
+                    ctx["pos"] += 1
+                    
+                else:  # entry1 is a non-ref nuc
+                    if entry2[0] == entry1[0]:
+                        c1 += mutMatrix[entry1[0]][entry1[0]]
+                    else:  # entry1 is a nucleotide and entry2 is not the same as entry1
+                        i1 = entry1[0]
+                        if entry2[0] < 5:  # entry2 is a nucleotide
+                            if entry2[0] == 4:
+                                i2 = entry1[1]
                             else:
-                                i2=entry2[0]
+                                i2 = entry2[0]
 
-                            if len(entry1)==4+usingErrorRate:
-                                coeff0=rootFreqs[i2]*mutMatrix[i2][i1]*entry1[2]
+                            if len(entry1) == 4 + usingErrorRate:
+                                coeff0 = rootFreqs[i2] * mutMatrix[i2][i1] * entry1[2]
                                 if contribLength:
-                                    coeff0+=rootFreqs[i1]*mutMatrix[i1][i2]*contribLength
+                                    coeff0 += rootFreqs[i1] * mutMatrix[i1][i2] * contribLength
                                 if flag2:
-                                    coeff0+=rootFreqs[i1]*0.33333*errorRate
+                                    coeff0 += rootFreqs[i1] * 0.33333 * errorRate
                                 if flag1:
-                                    coeff0+=rootFreqs[i2]*0.33333*errorRate
-                                coeff1=rootFreqs[i1]*mutMatrix[i1][i2]
+                                    coeff0 += rootFreqs[i2] * 0.33333 * errorRate
+                                coeff1 = rootFreqs[i1] * mutMatrix[i1][i2]
                                 if coeff1:
-                                    coeff0=coeff0/coeff1
+                                    coeff0 = coeff0 / coeff1
                                 else:
-                                    coeff0=None
+                                    coeff0 = None
                             else:
-                                coeff0=contribLength
+                                coeff0 = contribLength
                                 if flag2 and errorRate is not None:
-                                    coeff0+=errorRate*0.33333/mutMatrix[i1][i2]
-                            if coeff0!=None:
+                                    coeff0 += errorRate * 0.33333 / mutMatrix[i1][i2]
+                            if coeff0 != None:
                                 if coeff0:
                                     ais.append(coeff0)
                                 else:
-                                    nZeros+=1
+                                    nZeros += 1
 
-                        else: #entry1 is a nucleotide and entry2 is of type "O"
-                            if len(entry1)==4+usingErrorRate:
-                                coeff0=rootFreqs[i1]*entry2[-1][i1] 
-                                coeff1=0.0
+                        else:  # entry1 is a nucleotide and entry2 is of type "O"
+                            if len(entry1) == 4 + usingErrorRate:
+                                coeff0 = rootFreqs[i1] * entry2[-1][i1]
+                                coeff1 = 0.0
                                 for i in range(4):
-                                    coeff0+=rootFreqs[i]*mutMatrix[i][i1]*entry1[2]*entry2[-1][i]
-                                    coeff1+=mutMatrix[i1][i]*entry2[-1][i]
-                                coeff1*=rootFreqs[i1]
+                                    coeff0 += rootFreqs[i] * mutMatrix[i][i1] * entry1[2] * entry2[-1][i]
+                                    coeff1 += mutMatrix[i1][i] * entry2[-1][i]
+                                coeff1 *= rootFreqs[i1]
                                 if contribLength:
-                                    coeff0+=coeff1*contribLength
+                                    coeff0 += coeff1 * contribLength
                                 if flag1 and errorRate is not None:
-                                    coeff0-=1.33333*errorRate*rootFreqs[i1]*entry2[-1][i1]
+                                    coeff0 -= 1.33333 * errorRate * rootFreqs[i1] * entry2[-1][i1]
                                     for i in range(4):
-                                        coeff0+=rootFreqs[i]*entry2[-1][i]*0.33333*errorRate
+                                        coeff0 += rootFreqs[i] * entry2[-1][i] * 0.33333 * errorRate
                             else:
-                                coeff0=entry2[-1][i1]
-                                coeff1=0.0
+                                coeff0 = entry2[-1][i1]
+                                coeff1 = 0.0
                                 for j in range(4):
-                                    coeff1+=mutMatrix[i1][j]*entry2[-1][j]
+                                    coeff1 += mutMatrix[i1][j] * entry2[-1][j]
                                 if contribLength:
-                                    coeff0+=coeff1*contribLength
-                            if coeff1<0.0:
-                                c1+=coeff1/coeff0
+                                    coeff0 += coeff1 * contribLength
+                            if coeff1 < 0.0:
+                                c1 += coeff1 / coeff0
                             elif coeff1:
-                                coeff0=coeff0/coeff1
-                                ais.append(coeff0)	
-                    pos+=1
+                                coeff0 = coeff0 / coeff1
+                                ais.append(coeff0)
+                        ctx["pos"] += 1
 
-        if pos== lref:
+        # Check if we've reached the end
+        if ctx["pos"] == lref:
             break
-        if entry1[0]<4 or entry1[0]==6:
-            indexEntry1+=1
-            entry1=probVectP[indexEntry1]
-        elif pos==entry1[1]:
-            indexEntry1+=1
-            entry1=probVectP[indexEntry1]
-        if entry2[0]<4 or entry2[0]==6:
-            indexEntry2+=1
-            entry2=probVectC[indexEntry2]
-        elif pos==entry2[1]:
-            indexEntry2+=1
-            entry2=probVectC[indexEntry2]
+            
+        # Advance entries using the new helper function
+        if not advance_entry_if_needed_deriv(ctx, probVectP, 1):
+            break
+        if not advance_entry_if_needed_deriv(ctx, probVectC, 2):
+            break
 
-	#now optimized branch length based on coefficients
-    c1=-c1
-    n=len(ais)+nZeros
-    if n==0:
+    # now optimized branch length based on coefficients
+    c1 = -c1
+    n = len(ais) + nZeros
+    if n == 0:
         return False
     else:
         if len(ais):
-            minAis=min(ais)
+            minAis = min(ais)
         else:
-            minAis=0.0
+            minAis = 0.0
         if nZeros:
-            minAis=min(0.0,minAis)
-        if minAis<0.0:
+            minAis = min(0.0, minAis)
+        if minAis < 0.0:
             return 0.1
-        tDown=min(0.1,n/c1-minAis)
-        if tDown<=0.0:
+        tDown = min(0.1, n / c1 - minAis)
+        if tDown <= 0.0:
             return False
         if nZeros:
-            vDown=nZeros/tDown
+            vDown = nZeros / tDown
         else:
-            vDown=0.0
+            vDown = 0.0
         for ai in ais:
-            vDown+=1.0/(ai+tDown)
+            vDown += 1.0 / (ai + tDown)
         if len(ais):
-            maxAis=max(ais)
+            maxAis = max(ais)
         else:
-            maxAis=0.0
-        tUp=min(0.1,n/c1-maxAis)
-        if tUp>=0.1:
+            maxAis = 0.0
+        tUp = min(0.1, n / c1 - maxAis)
+        if tUp >= 0.1:
             return 0.1
-        if tUp<=minBLenSensitivity:
+        if tUp <= minBLenSensitivity:
             if minAis:
-                tUp=0.0
+                tUp = 0.0
             else:
-                tUp=minBLenSensitivity
+                tUp = minBLenSensitivity
         if nZeros:
-            vUp=nZeros/tUp
+            vUp = nZeros / tUp
         else:
-            vUp=0.0
+            vUp = 0.0
         for ai in ais:
-            vUp+=1.0/(ai+tUp)
-    if vDown>c1+minBLenSensitivity or vUp<c1-minBLenSensitivity:
-        if vUp<c1-minBLenSensitivity and (not tUp):
+            vUp += 1.0 / (ai + tUp)
+    if vDown > c1 + minBLenSensitivity or vUp < c1 - minBLenSensitivity:
+        if vUp < c1 - minBLenSensitivity and (not tUp):
             return False
-        if (vDown>c1+minBLenSensitivity) and tDown>=0.1:
+        if (vDown > c1 + minBLenSensitivity) and tDown >= 0.1:
             return 0.1
         print("Initial border parameters don't fit expectations")
 
-    while tDown-tUp>minBLenSensitivity:
-        tMiddle=(tUp+tDown)/2
+    while tDown - tUp > minBLenSensitivity:
+        tMiddle = (tUp + tDown) / 2
         if nZeros:
-            vMiddle=nZeros/tMiddle
+            vMiddle = nZeros / tMiddle
         else:
-            vMiddle=0.0
+            vMiddle = 0.0
         for ai in ais:
-            vMiddle+=1.0/(ai+tMiddle)
-        if vMiddle>c1:
-            tUp=tMiddle
+            vMiddle += 1.0 / (ai + tMiddle)
+        if vMiddle > c1:
+            tUp = tMiddle
         else:
-            tDown=tMiddle
+            tDown = tMiddle
 
     return tUp
 
@@ -2559,7 +2648,7 @@ def main():
     # Read reference genome
     # refFile = "./maple_alignment_sample/aligned_europe.fasta"
     # inputFile = "./maple_alignment_sample/maple_europe.txt"
-    inputFile = "maple_alignment_sample/maple_europe.txt"
+    inputFile = "maple_alignment_sample/maple_aligned_europe.txt"
     # ref = collectReference(refFile)
     # lref = len(ref)
     # print(f"Reference genome length: {len(ref)}")
@@ -2570,7 +2659,6 @@ def main():
     print(f"Reference extracted; length: {lref}")
     if not isinstance(data, dict):
         raise Exception("Alignment data should be a dictionary of sample_name: diffs")
-    
     sampleNames = list(data.keys())
     numSamples = len(sampleNames)
     print(f"Number of samples: {numSamples}")
@@ -2726,7 +2814,7 @@ def main():
     except Exception as e:
         print(f"Branch length stats: unavailable ({e})")
     
-    outputFile = "output_tree.newick"
+    outputFile = "output_europe_tree.newick"
     
     # Generate Newick string
     newickString = createNewick(
