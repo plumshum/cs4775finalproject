@@ -1569,7 +1569,7 @@ def _recompute_down_at_node(tree, node_idx):
         isUpDown=False,
     )
 
-
+from collections import deque
 def updatePartials(tree, nodeList=None, force=False):
     """MAPLE-style partial update.
 
@@ -1606,16 +1606,18 @@ def updatePartials(tree, nodeList=None, force=False):
                 update_down_nodes.add(i)
 
     # ---- Incremental bottom-up update driven by changes ----
-    work = list(update_down_nodes)
+    work = deque(update_down_nodes)
+    scheduled = set(work)
     changed = set()
 
     while work:
         node_idx = work.pop()
+        scheduled.discard(node_idx)
         old_vect = tree.probVect[node_idx]
         new_vect = _recompute_down_at_node(tree, node_idx)
         if new_vect is None:
         # children not ready yet → retry later
-            work.insert(0, node_idx)
+            work.appendleft(node_idx)
             continue
 
         if old_vect is None or areVectorsDifferent(old_vect, new_vect):
@@ -1625,7 +1627,9 @@ def updatePartials(tree, nodeList=None, force=False):
 
             parent = tree.up[node_idx]
             if parent is not None:
-                work.append(parent)
+                if parent not in scheduled:
+                    work.append(parent)
+                    scheduled.add(parent)
     # Nodes whose upward vectors may be affected
     affected = set(changed)
     for n in list(affected):

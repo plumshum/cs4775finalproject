@@ -1,0 +1,2 @@
+RF	normalisedRF	leaves	foundBranches	missedBranches	notFoundBranches	RFL
+622	0.1504960077425599	2891	935	312	310	0.052031116663985535
