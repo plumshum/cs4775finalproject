@@ -5,3 +5,5 @@ matplotlib
 pandas
 scikit-learn
 biopython
+memory_profiler
+matplotlib

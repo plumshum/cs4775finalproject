@@ -42,6 +42,10 @@
 import numpy as np
 import sys
 
+# for memory
+from memory_profiler import memory_usage
+import matplotlib.pyplot as plt
+
 class Tree(object):
 	def __init__(self):
 		self.dist = []
@@ -2555,7 +2559,7 @@ def main():
     # Read reference genome
     # refFile = "./maple_alignment_sample/aligned_europe.fasta"
     # inputFile = "./maple_alignment_sample/maple_europe.txt"
-    inputFile = "maple_alignment_sample/MAPLE_alignment_example.txt"
+    inputFile = "maple_alignment_sample/maple_europe.txt"
     # ref = collectReference(refFile)
     # lref = len(ref)
     # print(f"Reference genome length: {len(ref)}")
@@ -2618,6 +2622,8 @@ def main():
     # 3. BUILD INITIAL TREE
     # ============================================================================
     print("\nStep 3: Building initial tree...")
+    import time 
+    start = time.time()
     
     # Create tree structure
     tree = Tree()
@@ -2737,6 +2743,7 @@ def main():
     
     print(f"Tree written to: {outputFile}")
     print(f"Newick string: {newickString}")
+    end = time.time()
     
     # ============================================================================
     # 6. SUMMARY STATISTICS
@@ -2749,8 +2756,19 @@ def main():
     print(f"Samples placed: {placedSamples}")
     print(f"Output: {outputFile}")
     print("="*60)
+    print(f"Total time: {end - start:.2f} seconds")
 
 
 if __name__ == "__main__":
-    main()
-   
+    mem = memory_usage((main, (), {}), interval=0.1)
+
+    # Save to PDF
+    plt.figure(figsize=(10, 6))
+    plt.plot(mem, linewidth=2)
+    plt.ylabel('Memory (MB)')
+    plt.xlabel('Time (0.1s intervals)')
+    plt.title('Memory Usage')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('memory_usage.pdf')  # Saves as PDF
+    print(f"Peak memory: {max(mem):.2f} MB")
