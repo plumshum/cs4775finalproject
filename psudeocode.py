@@ -2793,9 +2793,9 @@ def main():
 
         
         
-        # Optimize branch lengths every 10 samples (or adjust frequency)
+        # Optimize branch lengths every 200 samples (or adjust frequency)
         # 10->35
-        if (i % 10 == 0) or (i == numSamples - 1):
+        if (i % 200 == 0):
             print(f"\n  Optimizing branch lengths after {i} placements...")
             optimizeBranchLengths(tree, mutMatrix, maxIterations=3)
             
