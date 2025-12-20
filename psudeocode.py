@@ -2873,3 +2873,5 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig('memory_usage.pdf')  # Saves as PDF
     print(f"Peak memory: {max(mem):.2f} MB")
+    
+    main()
