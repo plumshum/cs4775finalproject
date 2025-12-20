@@ -2648,7 +2648,7 @@ def main():
     # Read reference genome
     # refFile = "./maple_alignment_sample/aligned_europe.fasta"
     # inputFile = "./maple_alignment_sample/maple_europe.txt"
-    inputFile = "maple_alignment_sample/maple_aligned_europe.txt"
+    inputFile = "maple_alignment_sample/maple_aligned_oceania.txt"
     # ref = collectReference(refFile)
     # lref = len(ref)
     # print(f"Reference genome length: {len(ref)}")
@@ -2748,6 +2748,18 @@ def main():
     updatePartials(tree, force=True)
     
     print(f"Root node created with sample: {firstSample}")
+    
+    # import random
+    # MAX_SAMPLES = 100
+    # SUBSEED = 1
+
+    # root = sampleNames[0]
+    # rest = sampleNames[1:]
+    # random.Random(SUBSEED).shuffle(rest)
+
+    # if len(sampleNames) > MAX_SAMPLES:
+    #     sampleNames = [root] + rest[:MAX_SAMPLES - 1]
+    # numSamples = len(sampleNames)
 
     # Place remaining samples one by one
     for i, sampleName in enumerate(sampleNames[1:], start=1):
@@ -2782,6 +2794,7 @@ def main():
         
         
         # Optimize branch lengths every 10 samples (or adjust frequency)
+        # 10->35
         if (i % 10 == 0) or (i == numSamples - 1):
             print(f"\n  Optimizing branch lengths after {i} placements...")
             optimizeBranchLengths(tree, mutMatrix, maxIterations=3)
@@ -2814,7 +2827,7 @@ def main():
     except Exception as e:
         print(f"Branch length stats: unavailable ({e})")
     
-    outputFile = "output_europe_tree.newick"
+    outputFile = "output_oceania_biohpc_tree.newick"
     
     # Generate Newick string
     newickString = createNewick(
