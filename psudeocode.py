@@ -2710,11 +2710,11 @@ def main():
 
     # Read reference genome
     # refFile = "./maple_alignment_sample/aligned_europe.fasta"
-    # inputFile = "./maple_alignment_sample/maple_europe.txt"
-    inputFile = "maple_alignment_sample/maple_aligned_oceania.txt"
     # ref = collectReference(refFile)
     # lref = len(ref)
     # print(f"Reference genome length: {len(ref)}")
+    # NOTE: change inputFile to the maple alignemnt file of your choice
+    inputFile = "./maple_alignment_sample/maple_alignment_example.txt"
 
     # Read alignment in MAPLE diff format w/ extractReference=True for now
     ref, data = readConciseAlignment(inputFile, ref=None, extractReference=True, onlyRef=None)
@@ -2887,7 +2887,7 @@ def main():
     except Exception as e:
         print(f"Branch length stats: unavailable ({e})")
 
-    outputFile = "output_oceania_biohpc_tree.newick"
+    outputFile = "output_alignement_example_tree.newick"
 
     # Generate Newick string
     newickString = createNewick(

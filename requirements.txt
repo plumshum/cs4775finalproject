@@ -1,2 +1,1 @@
-# https://pypy.org/download.html
-pip install numpy scipy matplotlib pandas scikit-learn jupyter
+numpy scipy matplotlib pandas scikit-learn biopython memory_profiler matplotlib
